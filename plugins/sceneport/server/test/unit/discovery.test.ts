@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { discoverBridge } from "../../src/discovery.js";
+import { discoverBridge, readDiscoveryFile } from "../../src/discovery.js";
 
 let root: string;
 
@@ -42,6 +42,41 @@ describe("discoverBridge", () => {
     expect(target.token).toBe("abc");
   });
 
+  it("parses v2 owner and heartbeat metadata", () => {
+    const project = makeProject("p", {
+      schemaVersion: 2,
+      bridge: "sceneport",
+      url: "http://127.0.0.1:38991",
+      token: "abc",
+      projectPath: "/p",
+      projectId: "pid",
+      protocolVersion: 1,
+      capabilitiesHash: "hash",
+      ownerLeaseId: "lease",
+      editorRole: "editor",
+      processId: process.pid,
+      startedUtc: new Date().toISOString(),
+      heartbeatUtc: new Date().toISOString(),
+    });
+    const target = discoverBridge({ SCENEPORT_PROJECT_PATH: project }, root);
+    expect(target.discovery?.schemaVersion).toBe(2);
+    expect(target.discovery?.ownerLeaseId).toBe("lease");
+    expect(target.discovery?.heartbeatStale).toBe(false);
+    expect(target.projectId).toBe("pid");
+  });
+
+  it("flags a stale heartbeat without rejecting the discovery file", () => {
+    const project = makeProject("p", {
+      schemaVersion: 2,
+      url: "http://127.0.0.1:38991",
+      heartbeatUtc: new Date(Date.now() - 120_000).toISOString(),
+    });
+    const snapshot = readDiscoveryFile(project);
+    expect(snapshot.file).not.toBeNull();
+    expect(snapshot.metadata?.heartbeatStale).toBe(true);
+    expect(snapshot.problems).toContain("discovery.stale_heartbeat");
+  });
+
   it("walks up from cwd to find a Unity project", () => {
     const project = makeProject("game", { url: "http://127.0.0.1:38992", token: "walk", projectPath: "/game" });
     const nested = join(project, "Assets", "Scripts", "deep");
@@ -67,11 +102,21 @@ describe("discoverBridge", () => {
     writeFileSync(join(dir, "Library", "ScenePort", "bridge.json"), "{ not json");
     const target = discoverBridge({ SCENEPORT_PROJECT_PATH: dir }, root);
     expect(target.source).toBe("default");
+    expect(readDiscoveryFile(dir).problems).toContain("discovery.malformed_json");
   });
 
   it("honors an explicit SCENEPORT_TOKEN override", () => {
     const project = makeProject("p", { url: "http://127.0.0.1:38993", token: "file-token" });
     const target = discoverBridge({ SCENEPORT_PROJECT_PATH: project, SCENEPORT_TOKEN: "override" }, root);
     expect(target.token).toBe("override");
+  });
+
+  it("ignores non-loopback discovery file URLs unless explicitly allowed", () => {
+    const project = makeProject("p", { url: "http://example.com:38993", token: "file-token" });
+    const target = discoverBridge({ SCENEPORT_PROJECT_PATH: project }, root);
+    expect(target.source).toBe("default");
+
+    const allowed = discoverBridge({ SCENEPORT_PROJECT_PATH: project, SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL: "1" }, root);
+    expect(allowed.baseUrl).toBe("http://example.com:38993");
   });
 });

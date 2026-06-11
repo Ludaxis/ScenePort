@@ -20,16 +20,22 @@ namespace ScenePort.McpBridge.Editor
         public const int MaxPort = 38996;
 
         private const int MainThreadTimeoutSeconds = 30;
+        private const double HeartbeatIntervalSeconds = 2;
         private const string AuthDisabledKey = "ScenePort.RequireAuthToken.Disabled";
 
         private static readonly object QueueLock = new object();
         private static readonly Queue<WorkItem> WorkQueue = new Queue<WorkItem>();
         private static readonly ScenePortConsoleBuffer ConsoleBuffer = new ScenePortConsoleBuffer(500);
-        private static readonly ScenePortContext Context = new ScenePortContext { Console = ConsoleBuffer };
+        private static readonly ScenePortContext Context = new ScenePortContext { Console = ConsoleBuffer, Audit = new ScenePortAuditLog() };
         private static readonly ScenePortRouter Router = new ScenePortRouter(Context);
+        private static readonly string OwnerLeaseId = Guid.NewGuid().ToString("N");
+        private static readonly string StartedUtc = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture);
 
         private static ScenePortHttpServer server;
         private static int mainThreadId;
+        private static bool hooksRegistered;
+        private static bool canHostBridge;
+        private static double nextHeartbeatAt;
 
         /// <summary>
         /// Seam for the security workstream: a request gate that rejects a request before any
@@ -40,13 +46,25 @@ namespace ScenePort.McpBridge.Editor
         static ScenePortBridge()
         {
             mainThreadId = Thread.CurrentThread.ManagedThreadId;
+            canHostBridge = ScenePortEditorProcessRole.ShouldHostBridge();
+            Context.OwnerLeaseId = OwnerLeaseId;
+            Context.StartedUtc = StartedUtc;
+            Context.EditorRole = ScenePortEditorProcessRole.CurrentRole();
+            Context.ProcessName = ScenePortEditorProcessRole.CurrentProcessName();
             Context.Version = ResolveVersion();
             RequestGate = request => ScenePortRequestGate.EvaluateRequest(request, Context);
+            if (!canHostBridge)
+            {
+                Debug.Log("ScenePort bridge disabled for Unity process role: " + Context.EditorRole);
+                return;
+            }
+
             EditorApplication.update += Pump;
             AssemblyReloadEvents.beforeAssemblyReload += Stop;
             EditorApplication.quitting += OnQuitting;
             Application.logMessageReceived += CaptureLog;
             TestRunHandlers.RegisterCallbacks();
+            hooksRegistered = true;
             Start();
         }
 
@@ -58,6 +76,12 @@ namespace ScenePort.McpBridge.Editor
         [MenuItem("Tools/ScenePort/Start Bridge")]
         public static void Start()
         {
+            if (!canHostBridge)
+            {
+                Debug.Log("ScenePort bridge not started for Unity process role: " + Context.EditorRole);
+                return;
+            }
+
             if (IsRunning)
             {
                 return;
@@ -80,6 +104,7 @@ namespace ScenePort.McpBridge.Editor
                     server = candidate;
                     Context.BoundPort = port;
                     WriteDiscoveryFile(projectPath, port);
+                    nextHeartbeatAt = EditorApplication.timeSinceStartup + HeartbeatIntervalSeconds;
                     Debug.Log("ScenePort bridge listening at http://127.0.0.1:" + port);
                     return;
                 }
@@ -117,6 +142,10 @@ namespace ScenePort.McpBridge.Editor
             }
 
             server = null;
+            if (hooksRegistered)
+            {
+                ScenePortDiscoveryFile.DeleteIfOwner(ScenePortPaths.ProjectPath(), OwnerLeaseId);
+            }
         }
 
         [MenuItem("Tools/ScenePort/Copy Bridge URL")]
@@ -158,6 +187,8 @@ namespace ScenePort.McpBridge.Editor
             ScenePortDiscoveryFile.Write(projectPath, new ScenePortDiscoveryFile.BridgeInfo
             {
                 bridgeVersion = Context.Version,
+                protocolVersion = Context.ProtocolVersion,
+                capabilitiesHash = Context.CapabilitiesHash,
                 url = "http://127.0.0.1:" + port,
                 port = port,
                 token = Context.Token,
@@ -166,13 +197,18 @@ namespace ScenePort.McpBridge.Editor
                 projectName = Application.productName,
                 unityVersion = Application.unityVersion,
                 processId = System.Diagnostics.Process.GetCurrentProcess().Id,
-                startedUtc = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
+                processName = Context.ProcessName,
+                startedUtc = StartedUtc,
+                heartbeatUtc = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
+                expiresUtc = DateTime.UtcNow.AddSeconds(HeartbeatIntervalSeconds * 4).ToString("o", System.Globalization.CultureInfo.InvariantCulture),
+                ownerLeaseId = OwnerLeaseId,
+                editorRole = Context.EditorRole,
             });
         }
 
         private static void OnQuitting()
         {
-            ScenePortDiscoveryFile.Delete(ScenePortPaths.ProjectPath());
+            ScenePortDiscoveryFile.DeleteIfOwner(ScenePortPaths.ProjectPath(), OwnerLeaseId);
         }
 
         private static string ExecuteOnMainThread(Func<string> action)
@@ -203,6 +239,12 @@ namespace ScenePort.McpBridge.Editor
 
         private static void Pump()
         {
+            if (IsRunning && EditorApplication.timeSinceStartup >= nextHeartbeatAt)
+            {
+                WriteDiscoveryFile(ScenePortPaths.ProjectPath(), Context.BoundPort);
+                nextHeartbeatAt = EditorApplication.timeSinceStartup + HeartbeatIntervalSeconds;
+            }
+
             while (true)
             {
                 WorkItem item = null;
@@ -258,6 +300,90 @@ namespace ScenePort.McpBridge.Editor
             public string Result;
             public Exception Error;
             public readonly ManualResetEventSlim Done = new ManualResetEventSlim(false);
+        }
+    }
+
+    internal static class ScenePortEditorProcessRole
+    {
+        internal static bool ShouldHostBridge()
+        {
+            return ShouldHostBridge(CurrentProcessName(), Environment.GetCommandLineArgs(), Application.isBatchMode);
+        }
+
+        internal static bool ShouldHostBridge(string processName, string[] args, bool isBatchMode)
+        {
+            return RoleFor(processName, args, isBatchMode) != "asset-import-worker";
+        }
+
+        internal static string CurrentRole()
+        {
+            return RoleFor(CurrentProcessName(), Environment.GetCommandLineArgs(), Application.isBatchMode);
+        }
+
+        internal static string RoleFor(string processName, string[] args, bool isBatchMode)
+        {
+            if (ContainsAssetImportWorker(processName) || ArgsContainAssetImportWorker(args))
+            {
+                return "asset-import-worker";
+            }
+
+            if (isBatchMode && ArgsContain(args, "-runTests"))
+            {
+                return "batchmode-tests";
+            }
+
+            return isBatchMode ? "batchmode" : "editor";
+        }
+
+        internal static string CurrentProcessName()
+        {
+            try
+            {
+                return System.Diagnostics.Process.GetCurrentProcess().ProcessName;
+            }
+            catch
+            {
+                return "unknown";
+            }
+        }
+
+        private static bool ArgsContainAssetImportWorker(string[] args)
+        {
+            if (args == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < args.Length; i++)
+            {
+                if (ContainsAssetImportWorker(args[i]))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool ArgsContain(string[] args, string value)
+        {
+            if (args == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < args.Length; i++)
+            {
+                if (string.Equals(args[i], value, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool ContainsAssetImportWorker(string value)
+        {
+            return !string.IsNullOrEmpty(value) && value.IndexOf("AssetImportWorker", StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 }

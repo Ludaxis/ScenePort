@@ -41,40 +41,47 @@ namespace ScenePort.McpBridge.Editor
             if (method == "OPTIONS")
             {
                 // We deliberately never satisfy a CORS preflight.
-                return Reject(403, "ScenePort does not accept CORS preflight requests.");
+                return Reject(403, "request.cors_forbidden", "ScenePort does not accept CORS preflight requests.", "request");
             }
 
             if (method != "GET" && method != "POST")
             {
-                return Reject(405, "Method not allowed.");
+                return Reject(405, "request.method_not_allowed", "Method not allowed.", "request");
             }
 
             // Browsers attach an Origin header to cross-origin requests and all POSTs;
             // native clients (Node fetch, curl) send none. Rejecting it kills CSRF.
             if (!string.IsNullOrEmpty(origin))
             {
-                return Reject(403, "Requests with an Origin header are rejected. ScenePort does not accept browser-initiated requests.");
+                return Reject(
+                    403,
+                    "request.origin_forbidden",
+                    "Requests with an Origin header are rejected. ScenePort does not accept browser-initiated requests.",
+                    "request");
             }
 
             if (!IsLoopbackHost(host))
             {
-                return Reject(403, "Requests must target 127.0.0.1 or localhost.");
+                return Reject(403, "request.host_forbidden", "Requests must target 127.0.0.1 or localhost.", "request");
             }
 
             if (method == "POST" && hasBody && !StartsWithJson(contentType))
             {
-                return Reject(415, "POST bodies must be application/json.");
+                return Reject(415, "request.content_type_invalid", "POST bodies must be application/json.", "request");
             }
 
             if (tokenRequired && path != "/health")
             {
                 if (!ScenePortAuth.FixedTimeEquals(tokenHeader, expectedToken))
                 {
-                    return Reject(401,
+                    return Reject(
+                        401,
+                        "bridge.unauthorized",
                         "Missing or invalid ScenePort token. Update both the ScenePort Unity package and the " +
                         "ScenePort MCP server to v0.3+, then restart your MCP client. The token is read automatically " +
                         "from <project>/Library/ScenePort/bridge.json — set SCENEPORT_PROJECT_PATH if your MCP client " +
-                        "does not run from inside the Unity project.");
+                        "does not run from inside the Unity project.",
+                        "auth");
                 }
             }
 
@@ -105,9 +112,9 @@ namespace ScenePort.McpBridge.Editor
                 && contentType.TrimStart().StartsWith("application/json", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static ScenePortGateResult Reject(int status, string message)
+        private static ScenePortGateResult Reject(int status, string code, string message, string category)
         {
-            return new ScenePortGateResult(status, ScenePortJson.Serialize(new ErrorResponse(message)));
+            return new ScenePortGateResult(status, ScenePortJson.Serialize(new ErrorResponse(code, message, category)));
         }
     }
 }

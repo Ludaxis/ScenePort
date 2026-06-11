@@ -4,6 +4,11 @@ using Newtonsoft.Json.Linq;
 
 namespace ScenePort.McpBridge.Editor
 {
+    internal sealed class ScenePortBadRequestException : Exception
+    {
+        internal ScenePortBadRequestException(string message) : base(message) { }
+    }
+
     /// <summary>
     /// Single source of truth for ScenePort JSON serialization. Replaces the previous
     /// hand-rolled StringBuilder/regex layer, which silently dropped exponent-notation
@@ -35,8 +40,9 @@ namespace ScenePort.McpBridge.Editor
         }
 
         /// <summary>
-        /// Parse a request body into a JObject. Returns an empty object for null/blank/invalid
-        /// bodies, matching the previous regex layer's "fall back to defaults" behavior.
+        /// Parse a request body into a JObject. Null/blank bodies remain empty objects, but
+        /// malformed or non-object JSON is rejected so write endpoints cannot mutate from
+        /// defaulted values.
         /// </summary>
         internal static JObject ParseBody(string body)
         {
@@ -48,11 +54,16 @@ namespace ScenePort.McpBridge.Editor
             try
             {
                 var token = JToken.Parse(body);
-                return token as JObject ?? new JObject();
+                if (token is JObject obj)
+                {
+                    return obj;
+                }
+
+                throw new ScenePortBadRequestException("JSON request body must be an object.");
             }
             catch (JsonException)
             {
-                return new JObject();
+                throw new ScenePortBadRequestException("Malformed JSON request body.");
             }
         }
 

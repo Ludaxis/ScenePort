@@ -7,7 +7,7 @@ namespace ScenePort.McpBridge.Editor.Tests
     {
         private static ScenePortRouter NewRouter()
         {
-            var ctx = new ScenePortContext { Console = new ScenePortConsoleBuffer(), Version = "test", BoundPort = 12345 };
+            var ctx = new ScenePortContext { Console = new ScenePortConsoleBuffer(), Audit = new ScenePortAuditLog(), Version = "test", BoundPort = 12345 };
             return new ScenePortRouter(ctx);
         }
 
@@ -17,13 +17,13 @@ namespace ScenePort.McpBridge.Editor.Tests
             var router = NewRouter();
             var endpoints = new[]
             {
-                "/health", "/scene", "/scene-hierarchy", "/selection", "/console",
+                "/health", "/capabilities", "/scene", "/scene-hierarchy", "/selection", "/console",
                 "/game-object", "/components", "/create-game-object", "/set-transform",
                 "/add-component", "/set-serialized-property", "/asset-search",
                 "/compilation-status", "/run-tests", "/tests-last", "/capture-game-view",
                 "/play-mode", "/packages", "/playtest/start", "/playtest/stop",
                 "/playtest/status", "/playtest/report", "/playtest/capture-frame",
-                "/playtest/send-key", "/playtest/send-click",
+                "/playtest/send-key", "/playtest/send-click", "/audit-log",
             };
 
             foreach (var endpoint in endpoints)
@@ -64,6 +64,19 @@ namespace ScenePort.McpBridge.Editor.Tests
             Assert.AreEqual("sceneport", json["bridge"].Value<string>());
             Assert.AreEqual(12345, json["port"].Value<int>());
             Assert.AreEqual("test", json["version"].Value<string>());
+            Assert.AreEqual(ScenePortProtocol.Version, json["protocolVersion"].Value<int>());
+            Assert.AreEqual(ScenePortProtocol.CapabilitiesHash, json["capabilitiesHash"].Value<string>());
+        }
+
+        [Test]
+        public void CapabilitiesDispatchReportsProtocol()
+        {
+            var router = NewRouter();
+            var json = JObject.Parse(router.Dispatch("/capabilities", "", null));
+            Assert.AreEqual("ok", json["status"].Value<string>());
+            Assert.AreEqual("sceneport", json["bridge"].Value<string>());
+            Assert.AreEqual(ScenePortProtocol.Version, json["protocolVersion"].Value<int>());
+            Assert.AreEqual(ScenePortProtocol.CapabilitiesHash, json["capabilitiesHash"].Value<string>());
         }
     }
 }

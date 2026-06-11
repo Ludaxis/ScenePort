@@ -15,9 +15,11 @@ namespace ScenePort.McpBridge.Editor
         [Serializable]
         internal sealed class BridgeInfo
         {
-            public int schemaVersion = 1;
+            public int schemaVersion = 2;
             public string bridge = "sceneport";
             public string bridgeVersion;
+            public int protocolVersion;
+            public string capabilitiesHash;
             public string url;
             public int port;
             public string token;
@@ -26,7 +28,12 @@ namespace ScenePort.McpBridge.Editor
             public string projectName;
             public string unityVersion;
             public int processId;
+            public string processName;
             public string startedUtc;
+            public string heartbeatUtc;
+            public string expiresUtc;
+            public string ownerLeaseId;
+            public string editorRole;
         }
 
         internal static string PathFor(string projectPath)
@@ -38,18 +45,37 @@ namespace ScenePort.McpBridge.Editor
         {
             try
             {
-                var path = PathFor(projectPath);
-                if (!File.Exists(path))
+                BridgeInfo info;
+                if (!TryRead(projectPath, out info))
                 {
                     return null;
                 }
-
-                var info = JsonUtility.FromJson<BridgeInfo>(File.ReadAllText(path));
                 return info != null && ScenePortAuth.IsValidTokenFormat(info.token) ? info.token : null;
             }
             catch (Exception)
             {
                 return null;
+            }
+        }
+
+        internal static bool TryRead(string projectPath, out BridgeInfo info)
+        {
+            info = null;
+            try
+            {
+                var path = PathFor(projectPath);
+                if (!File.Exists(path))
+                {
+                    return false;
+                }
+
+                info = JsonUtility.FromJson<BridgeInfo>(File.ReadAllText(path));
+                return info != null;
+            }
+            catch (Exception)
+            {
+                info = null;
+                return false;
             }
         }
 
@@ -59,11 +85,44 @@ namespace ScenePort.McpBridge.Editor
             {
                 var path = PathFor(projectPath);
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.WriteAllText(path, JsonUtility.ToJson(info, true));
+                var tempPath = path + ".tmp";
+                File.WriteAllText(tempPath, JsonUtility.ToJson(info, true));
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        File.Replace(tempPath, path, null);
+                    }
+                    catch
+                    {
+                        File.Delete(path);
+                        File.Move(tempPath, path);
+                    }
+                }
+                else
+                {
+                    File.Move(tempPath, path);
+                }
             }
             catch (Exception ex)
             {
                 Debug.LogWarning("ScenePort could not write discovery file: " + ex.Message);
+            }
+        }
+
+        internal static void DeleteIfOwner(string projectPath, string ownerLeaseId)
+        {
+            try
+            {
+                BridgeInfo info;
+                if (!TryRead(projectPath, out info) || info == null || info.ownerLeaseId == ownerLeaseId)
+                {
+                    Delete(projectPath);
+                }
+            }
+            catch (Exception)
+            {
+                // Best-effort cleanup.
             }
         }
 

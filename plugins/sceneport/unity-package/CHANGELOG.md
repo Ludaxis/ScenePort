@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+- Added a bounded local audit log at `Library/ScenePort/audit.json` plus `/audit-log`.
+- Added discovery schema v2 with protocol, capability, owner lease, process role,
+  heartbeat, and expiry metadata.
+- Added `/capabilities` for bridge contract inspection.
+- Prevented AssetImportWorker processes from hosting the bridge while keeping Unity test
+  batchmode supported.
+- Added structured error bodies for request, auth, editor busy, and timeout failures.
+- Rejected malformed or non-object JSON POST bodies with `400` before editor mutation.
+- Hardened serialized-property writes by blocking internal script/prefab references,
+  non-editable properties, and non-scene object targets.
+- Added the `Team Readiness Demo` UPM sample.
+
 ## 0.4.0
 
 - Added Playtest Pilot endpoints for start, stop, status, report, Game view key/click events,

@@ -60,6 +60,24 @@ namespace ScenePort.McpBridge.Editor.Tests
             Assert.AreEqual("ok", json["status"].Value<string>());
             Assert.AreEqual("sceneport", json["bridge"].Value<string>());
             Assert.AreEqual(ScenePortBridge.BoundPort, json["port"].Value<int>());
+            Assert.AreEqual(ScenePortProtocol.Version, json["protocolVersion"].Value<int>());
+            Assert.AreEqual(ScenePortProtocol.CapabilitiesHash, json["capabilitiesHash"].Value<string>());
+            Assert.IsFalse(string.IsNullOrEmpty(json["ownerLeaseId"].Value<string>()));
+            Assert.IsFalse(string.IsNullOrEmpty(json["heartbeatUtc"].Value<string>()));
+        }
+
+        [UnityTest]
+        public IEnumerator CapabilitiesRoundTripsWithToken()
+        {
+            var task = Client.SendAsync(Authed(HttpMethod.Get, "/capabilities"));
+            yield return Await(task);
+
+            var read = task.Result.Content.ReadAsStringAsync();
+            yield return Await(read);
+            var json = JObject.Parse(read.Result);
+            Assert.AreEqual("ok", json["status"].Value<string>());
+            Assert.AreEqual("sceneport", json["bridge"].Value<string>());
+            Assert.AreEqual(ScenePortProtocol.Version, json["protocolVersion"].Value<int>());
         }
 
         [UnityTest]
@@ -76,11 +94,67 @@ namespace ScenePort.McpBridge.Editor.Tests
         }
 
         [UnityTest]
+        public IEnumerator MalformedJsonPostIsRejectedAndDoesNotMutate()
+        {
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            var content = new StringContent("{broken", Encoding.UTF8, "application/json");
+            var task = Client.SendAsync(Authed(HttpMethod.Post, "/create-game-object", content));
+            yield return Await(task);
+
+            Assert.AreEqual((System.Net.HttpStatusCode)400, task.Result.StatusCode);
+            var read = task.Result.Content.ReadAsStringAsync();
+            yield return Await(read);
+            var body = JObject.Parse(read.Result);
+            Assert.AreEqual("request.invalid", body["code"].Value<string>());
+            Assert.IsNull(GameObject.Find("ScenePort GameObject"));
+        }
+
+        [UnityTest]
+        public IEnumerator AuditLogRecordsAuthedMutation()
+        {
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            var create = Client.SendAsync(Authed(HttpMethod.Post, "/create-game-object",
+                new StringContent("{\"name\":\"AuditProbe\"}", Encoding.UTF8, "application/json")));
+            yield return Await(create);
+            Assert.AreEqual(System.Net.HttpStatusCode.OK, create.Result.StatusCode);
+
+            var audit = Client.SendAsync(Authed(HttpMethod.Get, "/audit-log?limit=5"));
+            yield return Await(audit);
+
+            var read = audit.Result.Content.ReadAsStringAsync();
+            yield return Await(read);
+            var body = JObject.Parse(read.Result);
+            Assert.AreEqual("ok", body["status"].Value<string>());
+            Assert.IsTrue(body["entries"].HasValues, "Expected at least one audit entry.");
+            var last = body["entries"].Last;
+            Assert.AreEqual("/create-game-object", last["endpoint"].Value<string>());
+            StringAssert.Contains("AuditProbe", last["summary"].Value<string>());
+        }
+
+        [UnityTest]
         public IEnumerator MissingTokenIsRejected()
         {
             var task = Client.GetAsync(BaseUrl + "/scene");
             yield return Await(task);
             Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, task.Result.StatusCode);
+            var read = task.Result.Content.ReadAsStringAsync();
+            yield return Await(read);
+            var body = JObject.Parse(read.Result);
+            Assert.AreEqual("bridge.unauthorized", body["code"].Value<string>());
+        }
+
+        [UnityTest]
+        public IEnumerator HealthEndpointSurvivesThousandRequestStress()
+        {
+            for (var i = 0; i < 1000; i++)
+            {
+                var task = Client.GetStringAsync(BaseUrl + "/health");
+                yield return Await(task, 30000);
+                var json = JObject.Parse(task.Result);
+                Assert.AreEqual("ok", json["status"].Value<string>());
+            }
         }
 
         // The core CSRF defense: a browser-style POST (Origin header present) must be rejected

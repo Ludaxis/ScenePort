@@ -1,3 +1,5 @@
+import { isScenePortBridgeError } from "./bridgeError.js";
+
 export function jsonResult(payload: unknown) {
   return {
     content: [
@@ -12,7 +14,11 @@ export function jsonResult(payload: unknown) {
 
 export function errorResult(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  return {
+  const result: {
+    isError: true;
+    content: Array<{ type: "text"; text: string }>;
+    structuredContent?: Record<string, unknown>;
+  } = {
     isError: true as const,
     content: [
       {
@@ -21,6 +27,15 @@ export function errorResult(error: unknown) {
       },
     ],
   };
+
+  if (isScenePortBridgeError(error)) {
+    result.structuredContent = {
+      status: "error",
+      error: error.toJSON(),
+    };
+  }
+
+  return result;
 }
 
 function toStructuredContent(payload: unknown): Record<string, unknown> {

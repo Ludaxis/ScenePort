@@ -24,6 +24,14 @@ Tool metrics:
 - Error category
 - Response size
 
+Local audit log:
+
+- UTC timestamp
+- HTTP method and endpoint
+- Mutating action summary
+- Target path or instance ID where available
+- Success or error status
+
 Error taxonomy:
 
 - Bridge offline
@@ -44,11 +52,16 @@ If contributors add telemetry, it must be:
 
 ## Debug Artifacts
 
-Future `sceneport doctor` should collect:
+`sceneport doctor` collects:
 
 - Node version
 - MCP server version
 - Unity bridge health
 - Port availability
 - Package version
-- Last 20 ScenePort bridge errors
+- Token discovery state
+- Project identity match state
+- Suggested MCP command/config reminders
+
+Future diagnostics should add the last 20 ScenePort bridge errors and recent audit-log
+summaries.

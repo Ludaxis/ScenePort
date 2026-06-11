@@ -9,8 +9,12 @@ namespace ScenePort.McpBridge.Editor
     {
         internal static object CreateGameObject(ScenePortRequest req, ScenePortContext ctx)
         {
-            var name = req.ExtractString("name", req.GetString("name", "ScenePort GameObject"));
+            var name = req.ExtractString("name", req.GetString("name", null));
             var parentPath = req.ExtractString("parentPath", req.GetString("parentPath", null));
+            if (string.IsNullOrEmpty(name))
+            {
+                return new ErrorResponse("name is required.");
+            }
 
             Undo.IncrementCurrentGroup();
             var undoGroup = Undo.GetCurrentGroup();
@@ -42,6 +46,11 @@ namespace ScenePort.McpBridge.Editor
             if (go == null)
             {
                 return new ErrorResponse("GameObject not found for instanceId " + instanceId);
+            }
+
+            if (!req.HasObject("position") && !req.HasObject("rotation") && !req.HasObject("scale"))
+            {
+                return new ErrorResponse("At least one transform field is required: position, rotation, or scale.");
             }
 
             Undo.RecordObject(go.transform, "ScenePort Set Transform");
@@ -125,6 +134,16 @@ namespace ScenePort.McpBridge.Editor
                 return new ErrorResponse("SerializedProperty not found: " + propertyPath);
             }
 
+            if (IsBlockedPropertyPath(propertyPath))
+            {
+                return new ErrorResponse("SerializedProperty path is not writable through ScenePort: " + propertyPath);
+            }
+
+            if (!property.editable)
+            {
+                return new ErrorResponse("SerializedProperty is not editable: " + propertyPath);
+            }
+
             Undo.RecordObject(target, "ScenePort Set Serialized Property");
             var changed = ApplySerializedValue(property, req);
             if (!changed)
@@ -180,7 +199,17 @@ namespace ScenePort.McpBridge.Editor
                 return go;
             }
 
-            return obj;
+            return null;
+        }
+
+        private static bool IsBlockedPropertyPath(string propertyPath)
+        {
+            return string.Equals(propertyPath, "m_Script", StringComparison.Ordinal)
+                || propertyPath.StartsWith("m_Script.", StringComparison.Ordinal)
+                || string.Equals(propertyPath, "m_CorrespondingSourceObject", StringComparison.Ordinal)
+                || string.Equals(propertyPath, "m_PrefabInstance", StringComparison.Ordinal)
+                || string.Equals(propertyPath, "m_PrefabAsset", StringComparison.Ordinal)
+                || string.Equals(propertyPath, "m_GameObject", StringComparison.Ordinal);
         }
 
         private static bool MatchesComponentType(Component component, string typeName)

@@ -19,6 +19,11 @@ namespace ScenePort.McpBridge.Editor.Tests
         public Choice enumField;
     }
 
+    internal sealed class ScenePortTestAsset : ScriptableObject
+    {
+        public string label;
+    }
+
     internal sealed class SceneHandlerTests
     {
         private ScenePortContext ctx;
@@ -27,7 +32,7 @@ namespace ScenePort.McpBridge.Editor.Tests
         public void SetUp()
         {
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            ctx = new ScenePortContext { Console = new ScenePortConsoleBuffer(), Version = "test", BoundPort = 0 };
+            ctx = new ScenePortContext { Console = new ScenePortConsoleBuffer(), Audit = new ScenePortAuditLog(), Version = "test", BoundPort = 0 };
         }
 
         private static ScenePortRequest Body(string json) => new ScenePortRequest("", json);
@@ -48,6 +53,13 @@ namespace ScenePort.McpBridge.Editor.Tests
 
             Undo.PerformUndo();
             Assert.IsNull(GameObject.Find("Created"));
+        }
+
+        [Test]
+        public void CreateGameObjectRequiresName()
+        {
+            var result = SceneEditHandlers.CreateGameObject(Body("{}"), ctx);
+            Assert.IsInstanceOf<ErrorResponse>(result);
         }
 
         [Test]
@@ -87,6 +99,14 @@ namespace ScenePort.McpBridge.Editor.Tests
         }
 
         [Test]
+        public void SetTransformRequiresAValue()
+        {
+            var go = new GameObject("T");
+            var result = SceneEditHandlers.SetTransform(Body("{\"instanceId\":" + go.GetInstanceID() + "}"), ctx);
+            Assert.IsInstanceOf<ErrorResponse>(result);
+        }
+
+        [Test]
         public void AddComponentByShortName()
         {
             var go = new GameObject("C");
@@ -122,6 +142,37 @@ namespace ScenePort.McpBridge.Editor.Tests
             Assert.AreEqual("hello", probe.stringField);
             Assert.AreEqual(new Color(1, 0, 0, 1), probe.colorField);
             Assert.AreEqual(ScenePortTestProbe.Choice.Beta, probe.enumField);
+        }
+
+        [Test]
+        public void SetSerializedPropertyBlocksScriptReference()
+        {
+            var go = Probe(out _);
+            var result = SceneEditHandlers.SetSerializedProperty(
+                Body("{\"instanceId\":" + go.GetInstanceID() + ",\"componentType\":\"ScenePortTestProbe\",\"propertyPath\":\"m_Script\",\"valueKind\":\"objectReference\",\"objectReferenceAssetPath\":\"Assets/Nope.cs\"}"),
+                ctx);
+
+            Assert.IsInstanceOf<ErrorResponse>(result);
+            StringAssert.Contains("not writable", ((ErrorResponse)result).Error);
+        }
+
+        [Test]
+        public void SetSerializedPropertyRejectsNonSceneObjectTargets()
+        {
+            var asset = ScriptableObject.CreateInstance<ScenePortTestAsset>();
+            try
+            {
+                var result = SceneEditHandlers.SetSerializedProperty(
+                    Body("{\"instanceId\":" + asset.GetInstanceID() + ",\"propertyPath\":\"label\",\"valueKind\":\"string\",\"stringValue\":\"changed\"}"),
+                    ctx);
+
+                Assert.IsInstanceOf<ErrorResponse>(result);
+                Assert.IsNull(asset.label);
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+            }
         }
 
         private void SetProp(int instanceId, string path, string valueJson)

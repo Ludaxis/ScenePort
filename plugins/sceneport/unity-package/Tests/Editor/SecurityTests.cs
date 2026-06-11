@@ -58,7 +58,9 @@ namespace ScenePort.McpBridge.Editor.Tests
         [Test]
         public void TokenMatrix()
         {
-            Assert.AreEqual(401, Eval(tokenHeader: null).StatusCode);
+            var missing = Eval(tokenHeader: null);
+            Assert.AreEqual(401, missing.StatusCode);
+            StringAssert.Contains("bridge.unauthorized", missing.Body);
             Assert.AreEqual(401, Eval(tokenHeader: "wrong").StatusCode);
             Assert.IsNull(Eval(tokenHeader: Token));
         }
@@ -104,6 +106,8 @@ namespace ScenePort.McpBridge.Editor.Tests
                 ScenePortDiscoveryFile.Write(dir, new ScenePortDiscoveryFile.BridgeInfo
                 {
                     bridgeVersion = "0.3.0",
+                    protocolVersion = ScenePortProtocol.Version,
+                    capabilitiesHash = ScenePortProtocol.CapabilitiesHash,
                     url = "http://127.0.0.1:38990",
                     port = 38990,
                     token = token,
@@ -112,12 +116,25 @@ namespace ScenePort.McpBridge.Editor.Tests
                     projectName = "Test",
                     unityVersion = "2022.3",
                     processId = 1234,
+                    processName = "Unity",
                     startedUtc = "now",
+                    heartbeatUtc = "now",
+                    expiresUtc = "later",
+                    ownerLeaseId = "owner",
+                    editorRole = "editor",
                 });
 
                 Assert.AreEqual(token, ScenePortDiscoveryFile.TryReadToken(dir));
+                ScenePortDiscoveryFile.BridgeInfo info;
+                Assert.IsTrue(ScenePortDiscoveryFile.TryRead(dir, out info));
+                Assert.AreEqual(2, info.schemaVersion);
+                Assert.AreEqual("owner", info.ownerLeaseId);
 
-                ScenePortDiscoveryFile.Delete(dir);
+                ScenePortDiscoveryFile.DeleteIfOwner(dir, "other-owner");
+                Assert.IsTrue(System.IO.File.Exists(ScenePortDiscoveryFile.PathFor(dir)));
+                ScenePortDiscoveryFile.DeleteIfOwner(dir, "owner");
+                Assert.IsFalse(System.IO.File.Exists(ScenePortDiscoveryFile.PathFor(dir)));
+
                 Assert.IsNull(ScenePortDiscoveryFile.TryReadToken(dir));
             }
             finally

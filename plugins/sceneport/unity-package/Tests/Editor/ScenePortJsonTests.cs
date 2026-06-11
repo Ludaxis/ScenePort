@@ -90,12 +90,12 @@ namespace ScenePort.McpBridge.Editor.Tests
         }
 
         [Test]
-        public void ParseBodyToleratesGarbage()
+        public void ParseBodyRejectsMalformedOrNonObjectJson()
         {
-            Assert.AreEqual(0, ScenePortJson.ParseBody("{not json").Count);
             Assert.AreEqual(0, ScenePortJson.ParseBody("").Count);
             Assert.AreEqual(0, ScenePortJson.ParseBody(null).Count);
-            Assert.AreEqual(0, ScenePortJson.ParseBody("[1,2,3]").Count); // arrays → empty object
+            Assert.Throws<ScenePortBadRequestException>(() => ScenePortJson.ParseBody("{not json"));
+            Assert.Throws<ScenePortBadRequestException>(() => ScenePortJson.ParseBody("[1,2,3]"));
         }
     }
 }

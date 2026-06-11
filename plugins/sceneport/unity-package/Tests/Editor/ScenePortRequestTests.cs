@@ -87,12 +87,9 @@ namespace ScenePort.McpBridge.Editor.Tests
         }
 
         [Test]
-        public void MalformedBodyFallsBackWithoutThrowing()
+        public void MalformedBodyThrowsBadRequest()
         {
-            var req = new ScenePortRequest("", "{broken");
-            Assert.AreEqual("d", req.ExtractString("name", "d"));
-            Assert.AreEqual(5, req.ExtractInt("n", 5));
-            Assert.AreEqual(Vector3.one, req.GetVector3("position", Vector3.one));
+            Assert.Throws<ScenePortBadRequestException>(() => new ScenePortRequest("", "{broken"));
         }
     }
 }

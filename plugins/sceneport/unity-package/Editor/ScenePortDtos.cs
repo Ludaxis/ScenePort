@@ -12,9 +12,42 @@ namespace ScenePort.McpBridge.Editor
     {
         [JsonProperty("status")] public string Status = "error";
         [JsonProperty("error")] public string Error;
+        [JsonProperty("message")] public string Message;
+        [JsonProperty("code")] public string Code;
+        [JsonProperty("category")] public string Category;
+        [JsonProperty("retryable")] public bool Retryable;
+        [JsonProperty("retryAfterMs", NullValueHandling = NullValueHandling.Ignore)] public int? RetryAfterMs;
+        [JsonProperty("remediation", NullValueHandling = NullValueHandling.Ignore)] public string Remediation;
+        [JsonProperty("details", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, object> Details;
 
         internal ErrorResponse() { }
-        internal ErrorResponse(string error) { Error = error ?? string.Empty; }
+        internal ErrorResponse(string error)
+        {
+            Error = error ?? string.Empty;
+            Message = Error;
+            Code = "operation.failed";
+            Category = "bridge";
+            Retryable = false;
+        }
+
+        internal ErrorResponse(
+            string code,
+            string message,
+            string category = "bridge",
+            bool retryable = false,
+            int? retryAfterMs = null,
+            string remediation = null,
+            Dictionary<string, object> details = null)
+        {
+            Code = string.IsNullOrEmpty(code) ? "operation.failed" : code;
+            Error = message ?? string.Empty;
+            Message = Error;
+            Category = string.IsNullOrEmpty(category) ? "bridge" : category;
+            Retryable = retryable;
+            RetryAfterMs = retryAfterMs;
+            Remediation = remediation;
+            Details = details;
+        }
     }
 
     internal sealed class HealthResponse
@@ -34,6 +67,27 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("projectId")] public string ProjectId;
         [JsonProperty("projectName")] public string ProjectName;
         [JsonProperty("tokenRequired")] public bool TokenRequired;
+        [JsonProperty("protocolVersion")] public int ProtocolVersion;
+        [JsonProperty("capabilitiesHash")] public string CapabilitiesHash;
+        [JsonProperty("ownerLeaseId")] public string OwnerLeaseId;
+        [JsonProperty("heartbeatUtc")] public string HeartbeatUtc;
+        [JsonProperty("startedUtc")] public string StartedUtc;
+        [JsonProperty("editorRole")] public string EditorRole;
+        [JsonProperty("processId")] public int ProcessId;
+        [JsonProperty("processName")] public string ProcessName;
+    }
+
+    internal sealed class CapabilitiesResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("bridge")] public string Bridge = "sceneport";
+        [JsonProperty("protocolVersion")] public int ProtocolVersion;
+        [JsonProperty("bridgeVersion")] public string BridgeVersion;
+        [JsonProperty("capabilitiesHash")] public string CapabilitiesHash;
+        [JsonProperty("endpointGroups")] public string[] EndpointGroups;
+        [JsonProperty("supportsAuditLog")] public bool SupportsAuditLog = true;
+        [JsonProperty("supportsSafeWrites")] public bool SupportsSafeWrites = true;
+        [JsonProperty("supportsPlaytests")] public bool SupportsPlaytests = true;
     }
 
     internal sealed class SceneResponse
@@ -274,5 +328,23 @@ namespace ScenePort.McpBridge.Editor
     {
         [JsonProperty("status")] public string Status = "ok";
         [JsonProperty("run")] public TestRunSummaryDto Run;
+    }
+
+    internal sealed class AuditLogEntryDto
+    {
+        [JsonProperty("utc")] public string Utc;
+        [JsonProperty("method")] public string Method;
+        [JsonProperty("endpoint")] public string Endpoint;
+        [JsonProperty("status")] public string Status;
+        [JsonProperty("summary")] public string Summary;
+        [JsonProperty("target")] public string Target;
+        [JsonProperty("error", NullValueHandling = NullValueHandling.Ignore)] public string Error;
+    }
+
+    internal sealed class AuditLogResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("path")] public string Path;
+        [JsonProperty("entries")] public List<AuditLogEntryDto> Entries = new List<AuditLogEntryDto>();
     }
 }

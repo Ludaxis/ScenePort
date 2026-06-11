@@ -1,6 +1,6 @@
 {
   "name": "io.sceneport.mcpbridge",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "displayName": "ScenePort MCP Bridge",
   "description": "A safe localhost bridge that exposes Unity Editor state and reversible editor actions to the ScenePort MCP server.",
   "unity": "2022.3",
@@ -19,5 +19,12 @@
     "com.unity.test-framework": "1.4.0",
     "com.unity.nuget.newtonsoft-json": "3.2.1"
   },
+  "samples": [
+    {
+      "displayName": "Team Readiness Demo",
+      "description": "A tiny demo target for validating ScenePort install, auth, playtest, audit, and agent smoke loops.",
+      "path": "Samples~/TeamReadinessDemo"
+    }
+  ],
   "license": "MIT"
 }

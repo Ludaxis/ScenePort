@@ -540,6 +540,25 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     toolGet("/playtest/report"),
   );
 
+  server.registerTool(
+    "unity_audit_log",
+    {
+      title: "Unity Audit Log",
+      description: "Read recent ScenePort mutating requests recorded locally by the Unity bridge.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(500).default(100).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ limit }) => {
+      try {
+        return jsonResult(await client.get("/audit-log", { limit }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
   server.registerResource(
     "sceneport-project-status",
     "sceneport://project/status",
@@ -549,6 +568,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       mimeType: "application/json",
     },
     async (uri) => jsonResource(uri, await client.get("/health")),
+  );
+
+  server.registerResource(
+    "sceneport-bridge-capabilities",
+    "sceneport://bridge/capabilities",
+    {
+      title: "ScenePort Bridge Capabilities",
+      description: "Bridge protocol version, capability hash, and supported Unity endpoint groups.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.getCapabilities()),
   );
 
   server.registerResource(
@@ -661,6 +691,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     async (uri) => jsonResource(uri, await client.get("/playtest/report")),
   );
 
+  server.registerResource(
+    "sceneport-audit-log",
+    "sceneport://audit/log",
+    {
+      title: "ScenePort Audit Log",
+      description: "Recent local ScenePort mutating requests and results.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.get("/audit-log", { limit: 200 })),
+  );
+
   function registerPrompt(name: string, title: string, description: string, text: string) {
     server.registerPrompt(
       name,
@@ -736,6 +777,13 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "Prepare Unity Build",
     "Run pre-build checks and identify blockers.",
     "Use ScenePort to inspect Unity status, package dependencies, compilation status, console errors, active scene state, and relevant tests. Return a concise build-readiness checklist with blockers and recommended fixes.",
+  );
+
+  registerPrompt(
+    "sceneport:team-readiness-smoke",
+    "Team Readiness Smoke",
+    "Run the v0.5 readiness loop for a Unity project.",
+    "Use ScenePort to run a team-readiness smoke: call unity_status, inspect scene hierarchy and selection, read console errors, run relevant EditMode tests, start a short playtest with one capture when safe, read the audit log, and return blockers plus exact follow-up tasks.",
   );
 
   return server;

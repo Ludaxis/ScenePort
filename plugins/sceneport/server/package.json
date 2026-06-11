@@ -1,10 +1,11 @@
 {
   "name": "@sceneport/mcp-server",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "MCP stdio server for the ScenePort Unity Editor bridge.",
   "type": "module",
   "private": true,
   "bin": {
+    "sceneport": "./build/index.js",
     "sceneport-mcp": "./build/index.js"
   },
   "scripts": {
@@ -15,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "smoke:team-readiness": "node scripts/team-readiness-smoke.mjs",
     "lint": "biome ci .",
     "format": "biome format --write ."
   },

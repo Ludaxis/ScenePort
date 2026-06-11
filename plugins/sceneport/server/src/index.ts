@@ -1,9 +1,16 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { runDoctor } from "./doctor.js";
 import { createScenePortServer } from "./server.js";
 import { UnityBridgeClient } from "./unityClient.js";
 
 async function main() {
+  const command = process.argv[2];
+  if (command === "doctor" || command === "--doctor") {
+    process.exitCode = await runDoctor();
+    return;
+  }
+
   const client = new UnityBridgeClient();
   const server = createScenePortServer(client);
   const transport = new StdioServerTransport();

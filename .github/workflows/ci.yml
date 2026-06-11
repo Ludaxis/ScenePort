@@ -111,7 +111,7 @@ jobs:
           fi
 
   unity-tests:
-    name: Unity EditMode tests (optional)
+    name: Unity EditMode tests
     runs-on: ubuntu-latest
     needs: build
     env:
@@ -120,21 +120,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Skip when no Unity license is configured
+      - name: Require Unity license
         if: env.UNITY_LICENSE == ''
-        run: echo "::notice::UNITY_LICENSE secret not set; Unity EditMode tests run locally via TestProjects/BridgeHarness. Skipping."
+        run: |
+          echo "::error::UNITY_LICENSE secret is required for mandatory ScenePort Unity EditMode tests."
+          exit 1
 
       - name: Cache Library
-        if: env.UNITY_LICENSE != ''
         uses: actions/cache@v4
         with:
           path: TestProjects/BridgeHarness/Library
           key: unity-library-${{ hashFiles('TestProjects/BridgeHarness/Packages/manifest.json') }}
 
       - name: Run EditMode tests
-        if: env.UNITY_LICENSE != ''
         uses: game-ci/unity-test-runner@v4
         with:
           projectPath: TestProjects/BridgeHarness
           testMode: editmode
           unityVersion: 2022.3.62f3
+
+      - name: Upload Unity test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-editmode-results
+          path: artifacts
+          if-no-files-found: ignore

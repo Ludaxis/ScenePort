@@ -25,6 +25,8 @@ Unity Package:
 - Captures console logs through `Application.logMessageReceived`.
 - Runs editor API work through a main-thread queue.
 - Uses `Undo` for write operations.
+- Rejects malformed JSON before dispatching handlers.
+- Records mutating requests to a bounded local audit log.
 - Exposes JSON endpoints for the MCP server.
 
 MCP Server:
@@ -33,6 +35,7 @@ MCP Server:
 - Exposes typed tools to MCP clients.
 - Calls the Unity bridge over localhost.
 - Returns both text and structured content where supported.
+- Provides `sceneport doctor` diagnostics for local setup and bridge readiness.
 
 Plugin Wrappers:
 
@@ -42,7 +45,7 @@ Plugin Wrappers:
 
 ## Endpoint Contract
 
-Implemented in v0.4:
+Implemented in v0.5:
 
 - `GET /health`
 - `GET /scene`
@@ -69,10 +72,11 @@ Implemented in v0.4:
 - `POST /playtest/capture-frame`
 - `POST /playtest/send-key`
 - `POST /playtest/send-click`
+- `GET /audit-log`
 
 ## Tool Contract
 
-Implemented in v0.4:
+Implemented in v0.5:
 
 - `unity_status`
 - `unity_scene_hierarchy`
@@ -99,12 +103,11 @@ Implemented in v0.4:
 - `unity_send_click`
 - `unity_capture_playtest_frame`
 - `unity_get_playtest_report`
+- `unity_audit_log`
 
 ## Future Architecture
 
 - Optional MCP Streamable HTTP mode.
-- Audit log of mutating requests.
-- `sceneport doctor` diagnostics.
 - Scene view screenshot capture.
 - Menu item execution allowlist.
 - Build pipeline integration.

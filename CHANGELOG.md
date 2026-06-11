@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.0
+
+### Team Readiness
+- Added `sceneport doctor` diagnostics for Node version, bridge discovery, Unity health,
+  token state, project identity, and MCP startup readiness.
+- Added v2 discovery metadata with bridge protocol version, capabilities hash, owner lease,
+  process role, heartbeat, and stale-owner diagnostics.
+- Added `/capabilities` and `sceneport://bridge/capabilities` so agents can inspect the
+  live bridge contract.
+- Added a local Unity audit log for mutating ScenePort requests plus `unity_audit_log`
+  and `sceneport://audit/log` MCP read surfaces.
+- Hardened request safety: malformed or non-object JSON POST bodies now return `400`
+  instead of falling back to defaults, and serialized-property writes block internal
+  script/prefab references, non-editable properties, and non-scene object targets.
+- Added structured bridge errors for bad requests, auth failures, editor busy states, and
+  main-thread timeouts.
+- Prevented AssetImportWorker processes from hosting the bridge while keeping test
+  batchmode supported.
+- Made pull requests and tagged releases require Unity EditMode tests with a configured
+  Unity license, plus generated release evidence.
+- Added a UPM `Team Readiness Demo` sample and `sceneport:team-readiness-smoke` prompt.
+
 ## 0.4.0
 
 ### Playtest Pilot

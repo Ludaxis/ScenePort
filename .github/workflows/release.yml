@@ -12,6 +12,8 @@ jobs:
   release:
     name: Verify and release
     runs-on: ubuntu-latest
+    env:
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,11 +41,47 @@ jobs:
           npm ci
           npm run lint
           npm run typecheck
-          npm test
+          npm run test:coverage
           node scripts/build.mjs
 
       - name: Bundle is fresh
         run: git diff --exit-code -- plugins/sceneport/server/build/
+
+      - name: Check plugin shape
+        run: |
+          test -f plugins/sceneport/.codex-plugin/plugin.json
+          test -f plugins/sceneport/.claude-plugin/plugin.json
+          test -f plugins/sceneport/.mcp.json
+          test -f plugins/sceneport/server/build/index.js
+          test -f plugins/sceneport/unity-package/package.json
+
+      - name: Require Unity license
+        run: |
+          if [ -z "$UNITY_LICENSE" ]; then
+            echo "::error::UNITY_LICENSE secret is required for release Unity EditMode tests."
+            exit 1
+          fi
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: TestProjects/BridgeHarness/Library
+          key: release-unity-library-${{ hashFiles('TestProjects/BridgeHarness/Packages/manifest.json') }}
+
+      - name: Run Unity EditMode tests
+        uses: game-ci/unity-test-runner@v4
+        with:
+          projectPath: TestProjects/BridgeHarness
+          testMode: editmode
+          unityVersion: 2022.3.62f3
+
+      - name: Upload Unity test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-editmode-results
+          path: artifacts
+          if-no-files-found: ignore
 
       - name: Pack Unity package tarball
         working-directory: plugins/sceneport/unity-package
@@ -62,6 +100,20 @@ jobs:
             fs.writeFileSync('RELEASE_NOTES.md', (m ? m[1] : 'See CHANGELOG.md').trim() + '\n');
           " "$VERSION"
           cat RELEASE_NOTES.md
+
+      - name: Collect release evidence
+        run: node scripts/collect-release-evidence.mjs
+
+      - name: Append release evidence to notes
+        run: |
+          printf "\n\n---\n\n" >> RELEASE_NOTES.md
+          cat RELEASE_EVIDENCE.md >> RELEASE_NOTES.md
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: RELEASE_EVIDENCE.md
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

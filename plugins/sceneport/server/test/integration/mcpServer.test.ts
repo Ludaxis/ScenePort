@@ -34,6 +34,7 @@ const TOOL_NAMES = [
   "unity_send_click",
   "unity_capture_playtest_frame",
   "unity_get_playtest_report",
+  "unity_audit_log",
 ];
 
 let bridge: FakeBridge | undefined;
@@ -72,6 +73,7 @@ describe("MCP server tool surface", () => {
   beforeEach(async () => {
     await connect({
       "/health": okHealth,
+      "/capabilities": () => ({ body: { status: "ok", bridge: "sceneport", protocolVersion: 1, capabilitiesHash: "hash" } }),
       "/scene-hierarchy": (r) => ({ body: { status: "ok", url: r.url } }),
       "/create-game-object": () => ({ body: { status: "ok" } }),
       "/set-serialized-property": () => ({ body: { status: "ok" } }),
@@ -84,7 +86,7 @@ describe("MCP server tool surface", () => {
     });
   });
 
-  it("lists exactly the 25 expected tools", async () => {
+  it("lists exactly the 26 expected tools", async () => {
     const { tools } = await client!.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
   });
@@ -108,6 +110,7 @@ describe("MCP server tool surface", () => {
     const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
     expect(payload.bridge).toBe("sceneport");
     expect(payload.discoverySource).toBe("env-url");
+    expect(payload.capabilities.protocolVersion).toBe(1);
   });
 
   it("plumbs query params to the bridge", async () => {
@@ -178,21 +181,36 @@ describe("MCP server error handling", () => {
     expect(result.isError).toBe(true);
     expect((result.content as Array<{ text: string }>)[0].text).toContain("compiling");
   });
+
+  it("surfaces a logical error envelope as an isError result", async () => {
+    await connect({
+      "/health": okHealth,
+      "/play-mode": () => ({ body: { status: "error", error: "busy", code: "editor.busy.compiling", retryable: true } }),
+    });
+    const result = await client!.callTool({ name: "unity_enter_play_mode", arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      status: "error",
+      error: { code: "editor.busy.compiling", retryable: true },
+    });
+  });
 });
 
 describe("MCP server resources and prompts", () => {
   beforeEach(async () => {
     await connect({
       "/health": okHealth,
+      "/capabilities": () => ({ body: { status: "ok", bridge: "sceneport", protocolVersion: 1, capabilitiesHash: "hash" } }),
       "/game-object": (r) => ({ body: { status: "ok", url: r.url } }),
       "/playtest/status": () => ({ body: { status: "ok", session: { status: "idle" } } }),
       "/playtest/report": () => ({ body: { status: "ok", report: { summary: "idle" } } }),
+      "/audit-log": () => ({ body: { status: "ok", entries: [] } }),
     });
   });
 
-  it("lists 9 static resources and 2 templates", async () => {
+  it("lists 11 static resources and 2 templates", async () => {
     const resources = await client!.listResources();
-    expect(resources.resources.length).toBe(9);
+    expect(resources.resources.length).toBe(11);
     const templates = await client!.listResourceTemplates();
     expect(templates.resourceTemplates.length).toBe(2);
   });
@@ -203,15 +221,21 @@ describe("MCP server resources and prompts", () => {
     expect(() => JSON.parse((result.contents[0] as { text: string }).text)).not.toThrow();
   });
 
+  it("reads bridge capabilities as JSON", async () => {
+    const result = await client!.readResource({ uri: "sceneport://bridge/capabilities" });
+    const payload = JSON.parse((result.contents[0] as { text: string }).text);
+    expect(payload.capabilitiesHash).toBe("hash");
+  });
+
   it("plumbs a resource template variable to the bridge", async () => {
     await client!.readResource({ uri: "sceneport://object/123" });
     const hit = bridge!.requests.find((r) => r.url.startsWith("/game-object"));
     expect(hit?.url).toContain("instanceId=123");
   });
 
-  it("lists 8 prompts that render non-empty text", async () => {
+  it("lists 9 prompts that render non-empty text", async () => {
     const { prompts } = await client!.listPrompts();
-    expect(prompts.length).toBe(8);
+    expect(prompts.length).toBe(9);
     const rendered = await client!.getPrompt({ name: prompts[0].name });
     expect((rendered.messages[0].content as { text: string }).text.length).toBeGreaterThan(0);
   });

@@ -10800,7 +10800,7 @@ var ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
   inst.parseAsync = async (data, params) => parseAsync2(inst, data, params, { callee: inst.parseAsync });
   inst.safeParseAsync = async (data, params) => safeParseAsync2(inst, data, params);
   inst.spa = inst.safeParseAsync;
-  inst.refine = (check2, params) => inst.check(refine(check2, params));
+  inst.refine = (check3, params) => inst.check(refine(check3, params));
   inst.superRefine = (refinement) => inst.check(superRefine(refinement));
   inst.overwrite = (fn) => inst.check(_overwrite(fn));
   inst.optional = () => optional(inst);
@@ -13006,6 +13006,692 @@ var StdioServerTransport = class {
   }
 };
 
+// src/discovery.ts
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+var DISCOVERY_HEARTBEAT_STALE_MS = 3e4;
+var DEFAULT_URL = "http://127.0.0.1:38987";
+var MAX_WALK_DEPTH = 10;
+function discoveryFilePath(projectPath) {
+  return join(projectPath, "Library", "ScenePort", "bridge.json");
+}
+function computeHeartbeat(heartbeatUtc, now = Date.now()) {
+  if (!heartbeatUtc) {
+    return {};
+  }
+  const heartbeatMs = Date.parse(heartbeatUtc);
+  if (!Number.isFinite(heartbeatMs)) {
+    return { heartbeatAgeMs: void 0, heartbeatStale: true };
+  }
+  const heartbeatAgeMs = Math.max(0, now - heartbeatMs);
+  return {
+    heartbeatAgeMs,
+    heartbeatStale: heartbeatAgeMs > DISCOVERY_HEARTBEAT_STALE_MS
+  };
+}
+function metadataFor(file, fileMtimeMs) {
+  return {
+    schemaVersion: typeof file.schemaVersion === "number" ? file.schemaVersion : void 0,
+    bridge: typeof file.bridge === "string" ? file.bridge : void 0,
+    bridgeVersion: typeof file.bridgeVersion === "string" ? file.bridgeVersion : void 0,
+    protocolVersion: typeof file.protocolVersion === "number" || typeof file.protocolVersion === "string" ? file.protocolVersion : void 0,
+    capabilitiesHash: typeof file.capabilitiesHash === "string" ? file.capabilitiesHash : void 0,
+    heartbeatUtc: typeof file.heartbeatUtc === "string" ? file.heartbeatUtc : void 0,
+    ...computeHeartbeat(typeof file.heartbeatUtc === "string" ? file.heartbeatUtc : void 0),
+    ownerLeaseId: typeof file.ownerLeaseId === "string" ? file.ownerLeaseId : void 0,
+    editorRole: typeof file.editorRole === "string" ? file.editorRole : void 0,
+    processId: typeof file.processId === "number" ? file.processId : void 0,
+    startedUtc: typeof file.startedUtc === "string" ? file.startedUtc : void 0,
+    projectId: typeof file.projectId === "string" ? file.projectId : void 0,
+    projectName: typeof file.projectName === "string" ? file.projectName : void 0,
+    unityVersion: typeof file.unityVersion === "string" ? file.unityVersion : void 0,
+    fileMtimeMs
+  };
+}
+function readDiscoveryFile(projectPath) {
+  const path = discoveryFilePath(projectPath);
+  const problems = [];
+  try {
+    if (!existsSync(path)) {
+      return { path, file: null, problems: ["discovery.not_found"] };
+    }
+    const stat = statSync(path);
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    if (!parsed || typeof parsed !== "object") {
+      return { path, file: null, problems: ["discovery.invalid_shape"] };
+    }
+    const metadata = metadataFor(parsed, stat.mtimeMs);
+    if (metadata.heartbeatStale) {
+      problems.push("discovery.stale_heartbeat");
+    }
+    if (metadata.editorRole === "asset-import-worker") {
+      problems.push("discovery.asset_import_worker_owner");
+    }
+    return { path, file: parsed, metadata, problems };
+  } catch {
+    return { path, file: null, problems: ["discovery.malformed_json"] };
+  }
+}
+function looksLikeUnityProject(dir) {
+  return existsSync(join(dir, "Assets")) && existsSync(join(dir, "ProjectSettings")) && existsSync(discoveryFilePath(dir));
+}
+function walkForProject(start) {
+  let dir = start;
+  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
+    if (looksLikeUnityProject(dir)) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  return null;
+}
+function unsafeBridgeUrlsAllowed(env) {
+  return env.SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL === "1" || env.SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL === "true";
+}
+function isLoopbackBridgeUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1" || url.hostname === "[::1]");
+  } catch {
+    return false;
+  }
+}
+function normalizeUrl(url) {
+  return url.replace(/\/$/, "");
+}
+function safeDiscoveryUrl(url, env) {
+  if (!url) {
+    return void 0;
+  }
+  const normalized = normalizeUrl(url);
+  return unsafeBridgeUrlsAllowed(env) || isLoopbackBridgeUrl(normalized) ? normalized : void 0;
+}
+function urlFromBridgeFile(file) {
+  if (typeof file.url === "string" && file.url.length > 0) {
+    return file.url;
+  }
+  if (typeof file.port === "number" && file.port > 0) {
+    return `http://127.0.0.1:${file.port}`;
+  }
+  return void 0;
+}
+function targetFromFile(snapshot, source, env, explicitToken) {
+  if (!snapshot.file) {
+    return null;
+  }
+  const fileUrl = safeDiscoveryUrl(urlFromBridgeFile(snapshot.file), env);
+  if (!fileUrl) {
+    return null;
+  }
+  return {
+    baseUrl: fileUrl,
+    token: explicitToken ?? snapshot.file.token,
+    projectPath: snapshot.file.projectPath,
+    projectId: snapshot.file.projectId,
+    source,
+    discoveryFilePath: snapshot.path,
+    discovery: snapshot.metadata,
+    discoveryProblems: snapshot.problems
+  };
+}
+function discoverBridge(env = process.env, cwd = process.cwd()) {
+  const explicitUrl = env.SCENEPORT_UNITY_URL;
+  const explicitToken = env.SCENEPORT_TOKEN;
+  const projectPathEnv = env.SCENEPORT_PROJECT_PATH;
+  let snapshot = null;
+  let fileProject = null;
+  if (projectPathEnv) {
+    const read = readDiscoveryFile(projectPathEnv);
+    if (read.file) {
+      snapshot = read;
+      fileProject = projectPathEnv;
+    }
+  }
+  if (!snapshot) {
+    const walked = walkForProject(cwd);
+    if (walked) {
+      snapshot = readDiscoveryFile(walked);
+      fileProject = walked;
+    }
+  }
+  if (explicitUrl) {
+    return {
+      baseUrl: normalizeUrl(explicitUrl),
+      token: explicitToken ?? snapshot?.file?.token,
+      projectPath: snapshot?.file?.projectPath ?? projectPathEnv,
+      projectId: snapshot?.file?.projectId,
+      source: "env-url",
+      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0,
+      discovery: snapshot?.metadata,
+      discoveryProblems: snapshot?.problems
+    };
+  }
+  if (snapshot) {
+    const target = targetFromFile(
+      snapshot,
+      projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk",
+      env,
+      explicitToken
+    );
+    if (target) {
+      return {
+        ...target,
+        projectPath: target.projectPath ?? fileProject ?? void 0
+      };
+    }
+  }
+  return {
+    baseUrl: DEFAULT_URL,
+    token: explicitToken,
+    source: "default"
+  };
+}
+function projectPathsEqual(a, b) {
+  if (!a || !b) {
+    return false;
+  }
+  const na = resolve(a);
+  const nb = resolve(b);
+  if (process.platform === "darwin" || process.platform === "win32") {
+    return na.toLowerCase() === nb.toLowerCase();
+  }
+  return na === nb;
+}
+
+// src/bridgeError.ts
+var ScenePortBridgeError = class extends Error {
+  code;
+  category;
+  retryable;
+  retryAfterMs;
+  remediation;
+  details;
+  httpStatus;
+  constructor(shape) {
+    super(shape.message);
+    this.name = "ScenePortBridgeError";
+    this.code = shape.code;
+    this.category = shape.category;
+    this.retryable = shape.retryable;
+    this.retryAfterMs = shape.retryAfterMs;
+    this.remediation = shape.remediation;
+    this.details = shape.details;
+    this.httpStatus = shape.httpStatus;
+  }
+  toJSON() {
+    return {
+      code: this.code,
+      category: this.category,
+      retryable: this.retryable,
+      retryAfterMs: this.retryAfterMs,
+      message: this.message,
+      remediation: this.remediation,
+      details: this.details,
+      httpStatus: this.httpStatus
+    };
+  }
+};
+function isScenePortBridgeError(error2) {
+  return error2 instanceof ScenePortBridgeError;
+}
+function bridgeError(shape) {
+  return new ScenePortBridgeError({
+    code: shape.code ?? "bridge.error",
+    category: shape.category ?? "bridge",
+    retryable: shape.retryable ?? false,
+    retryAfterMs: shape.retryAfterMs,
+    message: shape.message,
+    remediation: shape.remediation,
+    details: shape.details,
+    httpStatus: shape.httpStatus
+  });
+}
+
+// src/unityClient.ts
+var TOKEN_HEADER = "X-ScenePort-Token";
+var UnityBridgeClient = class {
+  target;
+  env;
+  cwd;
+  resolverEnabled;
+  expectedProjectPath;
+  identityResolved = false;
+  identityError = null;
+  constructor(target, env = process.env, cwd = process.cwd()) {
+    this.env = env;
+    this.cwd = cwd;
+    if (typeof target === "string") {
+      const discovered = discoverBridge(env, cwd);
+      this.target = { ...discovered, baseUrl: target.replace(/\/$/, ""), source: "env-url" };
+      this.resolverEnabled = false;
+    } else {
+      this.target = target ?? discoverBridge(env, cwd);
+      this.resolverEnabled = target === void 0;
+    }
+    const unsafeAllowed = env.SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL === "1" || env.SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL === "true";
+    if (!isLoopbackBridgeUrl(this.target.baseUrl) && !unsafeAllowed) {
+      throw new Error(
+        `ScenePort bridge URL must be loopback by default: ${this.target.baseUrl}. Set SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL=1 only for an explicitly trusted development tunnel.`
+      );
+    }
+    this.expectedProjectPath = env.SCENEPORT_PROJECT_PATH;
+  }
+  get baseUrl() {
+    return this.target.baseUrl;
+  }
+  async get(path, params = {}) {
+    this.resolveFresh();
+    await this.guardIdentity();
+    return this.request("GET", path, params);
+  }
+  async post(path, body) {
+    this.resolveFresh();
+    await this.guardIdentity();
+    return this.request("POST", path, void 0, body);
+  }
+  /**
+   * Health plus discovery/identity metadata for unity_status. Never throws on identity
+   * mismatch — it reports it, so the tool can be used to diagnose a wrong-project connection.
+   */
+  async statusReport() {
+    this.resolveFresh();
+    let health = {};
+    let error2;
+    try {
+      const result = await this.request("GET", "/health");
+      if (result && typeof result === "object") {
+        health = result;
+      }
+    } catch (e) {
+      error2 = e instanceof Error ? e.message : String(e);
+    }
+    const actualPath = typeof health.projectPath === "string" ? health.projectPath : void 0;
+    const identityMatch = this.expectedProjectPath ? projectPathsEqual(actualPath, this.expectedProjectPath) : null;
+    const legacyBridge = health.projectId === void 0 && !error2;
+    const capabilities = await this.getCapabilities();
+    return {
+      ...health,
+      ...error2 ? { status: "error", error: error2 } : {},
+      discoverySource: this.target.source,
+      discoveryFilePath: this.target.discoveryFilePath ?? null,
+      discovery: this.target.discovery,
+      discoveryProblems: this.target.discoveryProblems,
+      tokenConfigured: Boolean(this.target.token),
+      identityMatch,
+      capabilities,
+      ...legacyBridge ? { warning: "Unity bridge is outdated (pre-0.3); update the ScenePort UPM package to enable auth and discovery." } : {}
+    };
+  }
+  async getCapabilities() {
+    try {
+      const result = await this.request("GET", "/capabilities", {}, void 0, false, { skipLogicalError: true });
+      if (result && typeof result === "object") {
+        return result;
+      }
+    } catch (error2) {
+      if (error2 instanceof ScenePortBridgeError && (error2.httpStatus === 404 || error2.code === "capability.unsupported")) {
+        return {
+          status: "ok",
+          bridge: "sceneport",
+          mode: "legacy-v0.5"
+        };
+      }
+    }
+    return {
+      status: "ok",
+      bridge: "sceneport",
+      mode: "legacy-v0.5"
+    };
+  }
+  async guardIdentity() {
+    if (!this.expectedProjectPath) {
+      return;
+    }
+    if (!this.identityResolved) {
+      try {
+        const health = await this.request("GET", "/health");
+        const actual = typeof health?.projectPath === "string" ? health.projectPath : void 0;
+        if (actual && !projectPathsEqual(actual, this.expectedProjectPath)) {
+          this.identityError = `ScenePort is connected to Unity project '${actual}' but SCENEPORT_PROJECT_PATH expects '${this.expectedProjectPath}'. Another Unity instance probably owns this port. Close it, or point SCENEPORT_UNITY_URL at the correct bridge (see Library/ScenePort/bridge.json in the expected project).`;
+        }
+        this.identityResolved = true;
+      } catch {
+      }
+    }
+    if (this.identityError) {
+      throw bridgeError({
+        code: "identity.mismatch",
+        category: "discovery",
+        retryable: false,
+        message: this.identityError,
+        remediation: "Set SCENEPORT_PROJECT_PATH to the desired Unity project root or restart the stale Unity bridge.",
+        details: { expectedProjectPath: this.expectedProjectPath }
+      });
+    }
+  }
+  async request(method, path, params = {}, body, isRetry = false, options = {}) {
+    const url = this.url(path, params);
+    const headers = { Accept: "application/json" };
+    if (this.target.token) {
+      headers[TOKEN_HEADER] = this.target.token;
+    }
+    let response;
+    try {
+      response = method === "GET" ? await fetch(url, { method, headers }) : await fetch(url, {
+        method,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch (error2) {
+      if (!isRetry && this.target.source !== "env-url" && this.rediscover()) {
+        return this.request(method, path, params, body, true, options);
+      }
+      throw bridgeError({
+        code: "bridge.unreachable",
+        category: "network",
+        retryable: true,
+        message: error2 instanceof Error ? error2.message : String(error2),
+        remediation: "Open the Unity project, confirm ScenePort is installed, then run sceneport doctor.",
+        details: { baseUrl: this.target.baseUrl, source: this.target.source }
+      });
+    }
+    if (response.status === 401 && !isRetry && this.rediscover()) {
+      return this.request(method, path, params, body, true, options);
+    }
+    return this.parse(response, options);
+  }
+  resolveFresh() {
+    if (!this.resolverEnabled) {
+      return;
+    }
+    const next = discoverBridge(this.env, this.cwd);
+    const changed = next.baseUrl !== this.target.baseUrl || next.token !== this.target.token || next.projectId !== this.target.projectId || next.discovery?.ownerLeaseId !== this.target.discovery?.ownerLeaseId || next.discovery?.startedUtc !== this.target.discovery?.startedUtc || next.discovery?.capabilitiesHash !== this.target.discovery?.capabilitiesHash || next.discovery?.fileMtimeMs !== this.target.discovery?.fileMtimeMs;
+    if (changed) {
+      this.target = next;
+      this.identityResolved = false;
+      this.identityError = null;
+    }
+  }
+  rediscover() {
+    const next = discoverBridge(this.env, this.cwd);
+    const changed = next.baseUrl !== this.target.baseUrl || next.token !== this.target.token || next.projectId !== this.target.projectId || next.discovery?.ownerLeaseId !== this.target.discovery?.ownerLeaseId || next.discovery?.startedUtc !== this.target.discovery?.startedUtc;
+    this.target = next;
+    if (changed) {
+      this.identityResolved = false;
+      this.identityError = null;
+    }
+    return changed;
+  }
+  url(path, params = {}) {
+    const url = new URL(path, this.target.baseUrl);
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== void 0) {
+        url.searchParams.set(key, String(value));
+      }
+    }
+    return url;
+  }
+  async parse(response, options = {}) {
+    const text = await response.text();
+    let payload = text;
+    if (text.length > 0) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = { status: "error", error: text };
+      }
+    }
+    if (!response.ok) {
+      throw this.errorFromPayload(response.status, payload);
+    }
+    if (!options.skipLogicalError && isLogicalErrorPayload(payload)) {
+      throw this.errorFromPayload(response.status, payload);
+    }
+    return payload;
+  }
+  errorFromPayload(httpStatus, payload) {
+    if (payload && typeof payload === "object") {
+      const record2 = payload;
+      const code = typeof record2.code === "string" ? record2.code : codeForStatus(httpStatus);
+      const category = typeof record2.category === "string" ? record2.category : categoryForStatus(httpStatus);
+      const message = typeof record2.message === "string" ? record2.message : typeof record2.error === "string" ? record2.error : `Unity bridge returned HTTP ${httpStatus}`;
+      return bridgeError({
+        code,
+        category,
+        retryable: typeof record2.retryable === "boolean" ? record2.retryable : httpStatus >= 500,
+        retryAfterMs: typeof record2.retryAfterMs === "number" ? record2.retryAfterMs : void 0,
+        message,
+        remediation: typeof record2.remediation === "string" ? record2.remediation : void 0,
+        details: typeof record2.details === "object" && record2.details !== null ? record2.details : void 0,
+        httpStatus
+      });
+    }
+    return bridgeError({
+      code: codeForStatus(httpStatus),
+      category: categoryForStatus(httpStatus),
+      retryable: httpStatus >= 500,
+      message: typeof payload === "string" && payload.length > 0 ? payload : `Unity bridge returned HTTP ${httpStatus}`,
+      httpStatus
+    });
+  }
+};
+function isLogicalErrorPayload(payload) {
+  return Boolean(payload && typeof payload === "object" && payload.status === "error");
+}
+function codeForStatus(status) {
+  if (status === 400) {
+    return "request.invalid";
+  }
+  if (status === 401) {
+    return "bridge.unauthorized";
+  }
+  if (status === 404) {
+    return "capability.unsupported";
+  }
+  if (status === 503) {
+    return "editor.busy";
+  }
+  return status >= 500 ? "bridge.error" : "request.failed";
+}
+function categoryForStatus(status) {
+  if (status === 400) {
+    return "request";
+  }
+  if (status === 401 || status === 403) {
+    return "auth";
+  }
+  if (status === 404) {
+    return "capability";
+  }
+  if (status === 503) {
+    return "editor";
+  }
+  return "bridge";
+}
+
+// src/version.ts
+var VERSION = "0.5.0";
+
+// src/doctor.ts
+function check2(name, status, detail) {
+  return { name, status, detail };
+}
+function nodeMajor(version2) {
+  return Number.parseInt(version2.replace(/^v/, "").split(".")[0] ?? "0", 10);
+}
+function reportStatus(checks) {
+  if (checks.some((item) => item.status === "fail")) {
+    return "error";
+  }
+  return checks.some((item) => item.status === "warn") ? "warning" : "ok";
+}
+function processIsAlive(pid) {
+  if (!pid || !Number.isInteger(pid) || pid <= 0) {
+    return null;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error2) {
+    const code = typeof error2 === "object" && error2 && "code" in error2 ? String(error2.code) : "";
+    return code === "EPERM";
+  }
+}
+async function buildDoctorReport(env = process.env, cwd = process.cwd()) {
+  const checks = [];
+  const nodeVersion = process.version;
+  checks.push(check2("node", nodeMajor(nodeVersion) >= 18 ? "pass" : "fail", `Node ${nodeVersion}; ScenePort requires Node 18 or newer.`));
+  let discovery;
+  try {
+    discovery = discoverBridge(env, cwd);
+    checks.push(
+      check2(
+        "discovery",
+        discovery.source === "default" ? "warn" : "pass",
+        discovery.discoveryFilePath ? `Using ${discovery.source} at ${discovery.discoveryFilePath}.` : `Using ${discovery.source} bridge URL ${discovery.baseUrl}.`
+      )
+    );
+  } catch (error2) {
+    discovery = { baseUrl: "http://127.0.0.1:38987", source: "default" };
+    checks.push(check2("discovery", "fail", error2 instanceof Error ? error2.message : String(error2)));
+  }
+  const discoveryProjectPath = env.SCENEPORT_PROJECT_PATH ?? discovery.projectPath;
+  if (discoveryProjectPath) {
+    const raw = readDiscoveryFile(discoveryProjectPath);
+    if (!raw.file) {
+      checks.push(
+        check2(
+          "discovery-file",
+          env.SCENEPORT_UNITY_URL ? "warn" : "fail",
+          `Cannot read ${raw.path}: ${raw.problems.join(", ") || "missing"}.`
+        )
+      );
+    } else {
+      const schema = raw.metadata?.schemaVersion ?? 1;
+      checks.push(
+        check2(
+          "discovery-schema",
+          schema >= 2 ? "pass" : "warn",
+          schema >= 2 ? `Discovery schema v${schema} with live owner metadata.` : "Legacy discovery schema; update the Unity package."
+        )
+      );
+      if (raw.metadata?.heartbeatUtc) {
+        const age = raw.metadata.heartbeatAgeMs ?? 0;
+        checks.push(
+          check2(
+            "owner-heartbeat",
+            raw.metadata.heartbeatStale ? "fail" : "pass",
+            raw.metadata.heartbeatStale ? `Heartbeat is stale (${Math.round(age / 1e3)}s old; expected under ${DISCOVERY_HEARTBEAT_STALE_MS / 1e3}s).` : `Heartbeat is fresh (${Math.round(age / 1e3)}s old).`
+          )
+        );
+      } else {
+        checks.push(check2("owner-heartbeat", "warn", "Discovery file has no heartbeat; owner freshness cannot be verified."));
+      }
+      const alive = processIsAlive(raw.metadata?.processId);
+      if (alive !== null) {
+        checks.push(
+          check2(
+            "owner-process",
+            alive ? "pass" : "fail",
+            alive ? `Owner process ${raw.metadata?.processId} is reachable (${raw.metadata?.editorRole ?? "unknown role"}).` : `Owner process ${raw.metadata?.processId} is not running; restart Unity or delete the stale discovery file.`
+          )
+        );
+      }
+      if (raw.metadata?.editorRole === "asset-import-worker") {
+        checks.push(check2("owner-role", "fail", "Discovery is owned by an AssetImportWorker, which must never host ScenePort."));
+      } else if (raw.metadata?.editorRole) {
+        checks.push(check2("owner-role", "pass", `Bridge owner role is ${raw.metadata.editorRole}.`));
+      }
+    }
+  }
+  let health = null;
+  try {
+    const client = new UnityBridgeClient(discovery, env);
+    health = await client.statusReport();
+    if (health.status === "error") {
+      checks.push(check2("bridge", "fail", String(health.error ?? "Unity bridge is not reachable.")));
+    } else {
+      checks.push(
+        check2(
+          "bridge",
+          "pass",
+          `Connected to ${String(health.projectName ?? "Unity project")} on ${String(health.port ?? discovery.baseUrl)}.`
+        )
+      );
+    }
+    if (health.tokenRequired === true && !health.tokenConfigured) {
+      checks.push(check2("auth", "fail", "Unity requires a ScenePort token, but the MCP server did not discover one."));
+    } else if (health.tokenRequired === false) {
+      checks.push(check2("auth", "warn", "Unity bridge auth token requirement is disabled in the Editor."));
+    } else {
+      checks.push(check2("auth", health.tokenConfigured ? "pass" : "warn", "Token discovery state is acceptable for this bridge."));
+    }
+    if (health.identityMatch === false) {
+      checks.push(check2("identity", "fail", "Connected Unity project does not match SCENEPORT_PROJECT_PATH."));
+    } else if (health.identityMatch === true) {
+      checks.push(check2("identity", "pass", "Connected Unity project matches SCENEPORT_PROJECT_PATH."));
+    } else {
+      checks.push(check2("identity", "warn", "SCENEPORT_PROJECT_PATH is not set, so wrong-project protection is advisory only."));
+    }
+    const capabilities = health.capabilities;
+    if (capabilities?.mode === "legacy-v0.5") {
+      checks.push(check2("capabilities", "warn", "Bridge does not expose /capabilities; treating it as legacy v0.5-compatible."));
+    } else if (capabilities?.status === "ok") {
+      checks.push(
+        check2(
+          "capabilities",
+          "pass",
+          `Protocol ${String(capabilities.protocolVersion ?? health.protocolVersion ?? "unknown")} capabilities ${String(
+            capabilities.capabilitiesHash ?? health.capabilitiesHash ?? "unknown"
+          )}.`
+        )
+      );
+    }
+  } catch (error2) {
+    checks.push(check2("bridge", "fail", error2 instanceof Error ? error2.message : String(error2)));
+  }
+  checks.push(check2("mcp", "pass", `ScenePort MCP server version ${VERSION} can start in stdio mode.`));
+  return {
+    status: reportStatus(checks),
+    version: VERSION,
+    nodeVersion,
+    cwd,
+    discovery,
+    health,
+    checks
+  };
+}
+function formatDoctorReport(report) {
+  const icon = { pass: "PASS", warn: "WARN", fail: "FAIL" };
+  const lines = [
+    `ScenePort doctor ${report.version}`,
+    `Status: ${report.status}`,
+    `CWD: ${report.cwd}`,
+    `Bridge: ${report.discovery.baseUrl} (${report.discovery.source})`,
+    "",
+    ...report.checks.map((item) => `[${icon[item.status]}] ${item.name}: ${item.detail}`)
+  ];
+  if (report.health?.projectPath) {
+    lines.push("", `Project: ${String(report.health.projectPath)}`);
+  }
+  lines.push(
+    "",
+    "Codex/Claude MCP command:",
+    "  node /absolute/path/to/ScenePort/plugins/sceneport/server/build/index.js",
+    "Set SCENEPORT_PROJECT_PATH to the Unity project root when the MCP server is not launched from that project."
+  );
+  return lines.join("\n");
+}
+async function runDoctor(env = process.env, cwd = process.cwd()) {
+  const report = await buildDoctorReport(env, cwd);
+  console.log(formatDoctorReport(report));
+  return report.status === "error" ? 1 : 0;
+}
+
 // node_modules/zod/v3/external.js
 var external_exports = {};
 __export(external_exports, {
@@ -13783,7 +14469,7 @@ var ZodType2 = class {
     const result = await (isAsync(maybeAsyncResult) ? maybeAsyncResult : Promise.resolve(maybeAsyncResult));
     return handleResult(ctx, result);
   }
-  refine(check2, message) {
+  refine(check3, message) {
     const getIssueProperties = (val) => {
       if (typeof message === "string" || typeof message === "undefined") {
         return { message };
@@ -13794,7 +14480,7 @@ var ZodType2 = class {
       }
     };
     return this._refinement((val, ctx) => {
-      const result = check2(val);
+      const result = check3(val);
       const setError = () => ctx.addIssue({
         code: ZodIssueCode.custom,
         ...getIssueProperties(val)
@@ -13817,9 +14503,9 @@ var ZodType2 = class {
       }
     });
   }
-  refinement(check2, refinementData) {
+  refinement(check3, refinementData) {
     return this._refinement((val, ctx) => {
-      if (!check2(val)) {
+      if (!check3(val)) {
         ctx.addIssue(typeof refinementData === "function" ? refinementData(val, ctx) : refinementData);
         return false;
       } else {
@@ -14041,70 +14727,70 @@ var ZodString2 = class _ZodString2 extends ZodType2 {
     }
     const status = new ParseStatus();
     let ctx = void 0;
-    for (const check2 of this._def.checks) {
-      if (check2.kind === "min") {
-        if (input.data.length < check2.value) {
+    for (const check3 of this._def.checks) {
+      if (check3.kind === "min") {
+        if (input.data.length < check3.value) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.too_small,
-            minimum: check2.value,
+            minimum: check3.value,
             type: "string",
             inclusive: true,
             exact: false,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "max") {
-        if (input.data.length > check2.value) {
+      } else if (check3.kind === "max") {
+        if (input.data.length > check3.value) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.too_big,
-            maximum: check2.value,
+            maximum: check3.value,
             type: "string",
             inclusive: true,
             exact: false,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "length") {
-        const tooBig = input.data.length > check2.value;
-        const tooSmall = input.data.length < check2.value;
+      } else if (check3.kind === "length") {
+        const tooBig = input.data.length > check3.value;
+        const tooSmall = input.data.length < check3.value;
         if (tooBig || tooSmall) {
           ctx = this._getOrReturnCtx(input, ctx);
           if (tooBig) {
             addIssueToContext(ctx, {
               code: ZodIssueCode.too_big,
-              maximum: check2.value,
+              maximum: check3.value,
               type: "string",
               inclusive: true,
               exact: true,
-              message: check2.message
+              message: check3.message
             });
           } else if (tooSmall) {
             addIssueToContext(ctx, {
               code: ZodIssueCode.too_small,
-              minimum: check2.value,
+              minimum: check3.value,
               type: "string",
               inclusive: true,
               exact: true,
-              message: check2.message
+              message: check3.message
             });
           }
           status.dirty();
         }
-      } else if (check2.kind === "email") {
+      } else if (check3.kind === "email") {
         if (!emailRegex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "email",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "emoji") {
+      } else if (check3.kind === "emoji") {
         if (!emojiRegex) {
           emojiRegex = new RegExp(_emojiRegex, "u");
         }
@@ -14113,61 +14799,61 @@ var ZodString2 = class _ZodString2 extends ZodType2 {
           addIssueToContext(ctx, {
             validation: "emoji",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "uuid") {
+      } else if (check3.kind === "uuid") {
         if (!uuidRegex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "uuid",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "nanoid") {
+      } else if (check3.kind === "nanoid") {
         if (!nanoidRegex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "nanoid",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "cuid") {
+      } else if (check3.kind === "cuid") {
         if (!cuidRegex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "cuid",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "cuid2") {
+      } else if (check3.kind === "cuid2") {
         if (!cuid2Regex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "cuid2",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "ulid") {
+      } else if (check3.kind === "ulid") {
         if (!ulidRegex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "ulid",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "url") {
+      } else if (check3.kind === "url") {
         try {
           new URL(input.data);
         } catch {
@@ -14175,153 +14861,153 @@ var ZodString2 = class _ZodString2 extends ZodType2 {
           addIssueToContext(ctx, {
             validation: "url",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "regex") {
-        check2.regex.lastIndex = 0;
-        const testResult = check2.regex.test(input.data);
+      } else if (check3.kind === "regex") {
+        check3.regex.lastIndex = 0;
+        const testResult = check3.regex.test(input.data);
         if (!testResult) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "regex",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "trim") {
+      } else if (check3.kind === "trim") {
         input.data = input.data.trim();
-      } else if (check2.kind === "includes") {
-        if (!input.data.includes(check2.value, check2.position)) {
+      } else if (check3.kind === "includes") {
+        if (!input.data.includes(check3.value, check3.position)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.invalid_string,
-            validation: { includes: check2.value, position: check2.position },
-            message: check2.message
+            validation: { includes: check3.value, position: check3.position },
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "toLowerCase") {
+      } else if (check3.kind === "toLowerCase") {
         input.data = input.data.toLowerCase();
-      } else if (check2.kind === "toUpperCase") {
+      } else if (check3.kind === "toUpperCase") {
         input.data = input.data.toUpperCase();
-      } else if (check2.kind === "startsWith") {
-        if (!input.data.startsWith(check2.value)) {
+      } else if (check3.kind === "startsWith") {
+        if (!input.data.startsWith(check3.value)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.invalid_string,
-            validation: { startsWith: check2.value },
-            message: check2.message
+            validation: { startsWith: check3.value },
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "endsWith") {
-        if (!input.data.endsWith(check2.value)) {
+      } else if (check3.kind === "endsWith") {
+        if (!input.data.endsWith(check3.value)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.invalid_string,
-            validation: { endsWith: check2.value },
-            message: check2.message
+            validation: { endsWith: check3.value },
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "datetime") {
-        const regex = datetimeRegex(check2);
+      } else if (check3.kind === "datetime") {
+        const regex = datetimeRegex(check3);
         if (!regex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.invalid_string,
             validation: "datetime",
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "date") {
+      } else if (check3.kind === "date") {
         const regex = dateRegex;
         if (!regex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.invalid_string,
             validation: "date",
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "time") {
-        const regex = timeRegex(check2);
+      } else if (check3.kind === "time") {
+        const regex = timeRegex(check3);
         if (!regex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.invalid_string,
             validation: "time",
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "duration") {
+      } else if (check3.kind === "duration") {
         if (!durationRegex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "duration",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "ip") {
-        if (!isValidIP(input.data, check2.version)) {
+      } else if (check3.kind === "ip") {
+        if (!isValidIP(input.data, check3.version)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "ip",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "jwt") {
-        if (!isValidJWT2(input.data, check2.alg)) {
+      } else if (check3.kind === "jwt") {
+        if (!isValidJWT2(input.data, check3.alg)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "jwt",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "cidr") {
-        if (!isValidCidr(input.data, check2.version)) {
+      } else if (check3.kind === "cidr") {
+        if (!isValidCidr(input.data, check3.version)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "cidr",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "base64") {
+      } else if (check3.kind === "base64") {
         if (!base64Regex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "base64",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "base64url") {
+      } else if (check3.kind === "base64url") {
         if (!base64urlRegex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "base64url",
             code: ZodIssueCode.invalid_string,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
       } else {
-        util.assertNever(check2);
+        util.assertNever(check3);
       }
     }
     return { status: status.value, value: input.data };
@@ -14333,10 +15019,10 @@ var ZodString2 = class _ZodString2 extends ZodType2 {
       ...errorUtil.errToObj(message)
     });
   }
-  _addCheck(check2) {
+  _addCheck(check3) {
     return new _ZodString2({
       ...this._def,
-      checks: [...this._def.checks, check2]
+      checks: [...this._def.checks, check3]
     });
   }
   email(message) {
@@ -14601,67 +15287,67 @@ var ZodNumber2 = class _ZodNumber extends ZodType2 {
     }
     let ctx = void 0;
     const status = new ParseStatus();
-    for (const check2 of this._def.checks) {
-      if (check2.kind === "int") {
+    for (const check3 of this._def.checks) {
+      if (check3.kind === "int") {
         if (!util.isInteger(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.invalid_type,
             expected: "integer",
             received: "float",
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "min") {
-        const tooSmall = check2.inclusive ? input.data < check2.value : input.data <= check2.value;
+      } else if (check3.kind === "min") {
+        const tooSmall = check3.inclusive ? input.data < check3.value : input.data <= check3.value;
         if (tooSmall) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.too_small,
-            minimum: check2.value,
+            minimum: check3.value,
             type: "number",
-            inclusive: check2.inclusive,
+            inclusive: check3.inclusive,
             exact: false,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "max") {
-        const tooBig = check2.inclusive ? input.data > check2.value : input.data >= check2.value;
+      } else if (check3.kind === "max") {
+        const tooBig = check3.inclusive ? input.data > check3.value : input.data >= check3.value;
         if (tooBig) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.too_big,
-            maximum: check2.value,
+            maximum: check3.value,
             type: "number",
-            inclusive: check2.inclusive,
+            inclusive: check3.inclusive,
             exact: false,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "multipleOf") {
-        if (floatSafeRemainder2(input.data, check2.value) !== 0) {
+      } else if (check3.kind === "multipleOf") {
+        if (floatSafeRemainder2(input.data, check3.value) !== 0) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.not_multiple_of,
-            multipleOf: check2.value,
-            message: check2.message
+            multipleOf: check3.value,
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "finite") {
+      } else if (check3.kind === "finite") {
         if (!Number.isFinite(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.not_finite,
-            message: check2.message
+            message: check3.message
           });
           status.dirty();
         }
       } else {
-        util.assertNever(check2);
+        util.assertNever(check3);
       }
     }
     return { status: status.value, value: input.data };
@@ -14692,10 +15378,10 @@ var ZodNumber2 = class _ZodNumber extends ZodType2 {
       ]
     });
   }
-  _addCheck(check2) {
+  _addCheck(check3) {
     return new _ZodNumber({
       ...this._def,
-      checks: [...this._def.checks, check2]
+      checks: [...this._def.checks, check3]
     });
   }
   int(message) {
@@ -14830,45 +15516,45 @@ var ZodBigInt = class _ZodBigInt extends ZodType2 {
     }
     let ctx = void 0;
     const status = new ParseStatus();
-    for (const check2 of this._def.checks) {
-      if (check2.kind === "min") {
-        const tooSmall = check2.inclusive ? input.data < check2.value : input.data <= check2.value;
+    for (const check3 of this._def.checks) {
+      if (check3.kind === "min") {
+        const tooSmall = check3.inclusive ? input.data < check3.value : input.data <= check3.value;
         if (tooSmall) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.too_small,
             type: "bigint",
-            minimum: check2.value,
-            inclusive: check2.inclusive,
-            message: check2.message
+            minimum: check3.value,
+            inclusive: check3.inclusive,
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "max") {
-        const tooBig = check2.inclusive ? input.data > check2.value : input.data >= check2.value;
+      } else if (check3.kind === "max") {
+        const tooBig = check3.inclusive ? input.data > check3.value : input.data >= check3.value;
         if (tooBig) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.too_big,
             type: "bigint",
-            maximum: check2.value,
-            inclusive: check2.inclusive,
-            message: check2.message
+            maximum: check3.value,
+            inclusive: check3.inclusive,
+            message: check3.message
           });
           status.dirty();
         }
-      } else if (check2.kind === "multipleOf") {
-        if (input.data % check2.value !== BigInt(0)) {
+      } else if (check3.kind === "multipleOf") {
+        if (input.data % check3.value !== BigInt(0)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.not_multiple_of,
-            multipleOf: check2.value,
-            message: check2.message
+            multipleOf: check3.value,
+            message: check3.message
           });
           status.dirty();
         }
       } else {
-        util.assertNever(check2);
+        util.assertNever(check3);
       }
     }
     return { status: status.value, value: input.data };
@@ -14908,10 +15594,10 @@ var ZodBigInt = class _ZodBigInt extends ZodType2 {
       ]
     });
   }
-  _addCheck(check2) {
+  _addCheck(check3) {
     return new _ZodBigInt({
       ...this._def,
-      checks: [...this._def.checks, check2]
+      checks: [...this._def.checks, check3]
     });
   }
   positive(message) {
@@ -15031,35 +15717,35 @@ var ZodDate = class _ZodDate extends ZodType2 {
     }
     const status = new ParseStatus();
     let ctx = void 0;
-    for (const check2 of this._def.checks) {
-      if (check2.kind === "min") {
-        if (input.data.getTime() < check2.value) {
+    for (const check3 of this._def.checks) {
+      if (check3.kind === "min") {
+        if (input.data.getTime() < check3.value) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.too_small,
-            message: check2.message,
+            message: check3.message,
             inclusive: true,
             exact: false,
-            minimum: check2.value,
+            minimum: check3.value,
             type: "date"
           });
           status.dirty();
         }
-      } else if (check2.kind === "max") {
-        if (input.data.getTime() > check2.value) {
+      } else if (check3.kind === "max") {
+        if (input.data.getTime() > check3.value) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             code: ZodIssueCode.too_big,
-            message: check2.message,
+            message: check3.message,
             inclusive: true,
             exact: false,
-            maximum: check2.value,
+            maximum: check3.value,
             type: "date"
           });
           status.dirty();
         }
       } else {
-        util.assertNever(check2);
+        util.assertNever(check3);
       }
     }
     return {
@@ -15067,10 +15753,10 @@ var ZodDate = class _ZodDate extends ZodType2 {
       value: new Date(input.data.getTime())
     };
   }
-  _addCheck(check2) {
+  _addCheck(check3) {
     return new _ZodDate({
       ...this._def,
-      checks: [...this._def.checks, check2]
+      checks: [...this._def.checks, check3]
     });
   }
   min(minDate, message) {
@@ -16931,10 +17617,10 @@ function cleanParams(params, data) {
   const p2 = typeof p === "string" ? { message: p } : p;
   return p2;
 }
-function custom2(check2, _params = {}, fatal) {
-  if (check2)
+function custom2(check3, _params = {}, fatal) {
+  if (check3)
     return ZodAny.create().superRefine((data, ctx) => {
-      const r = check2(data);
+      const r = check3(data);
       if (r instanceof Promise) {
         return r.then((r2) => {
           if (!r2) {
@@ -17371,38 +18057,38 @@ function parseBigintDef(def, refs) {
   };
   if (!def.checks)
     return res;
-  for (const check2 of def.checks) {
-    switch (check2.kind) {
+  for (const check3 of def.checks) {
+    switch (check3.kind) {
       case "min":
         if (refs.target === "jsonSchema7") {
-          if (check2.inclusive) {
-            setResponseValueAndErrors(res, "minimum", check2.value, check2.message, refs);
+          if (check3.inclusive) {
+            setResponseValueAndErrors(res, "minimum", check3.value, check3.message, refs);
           } else {
-            setResponseValueAndErrors(res, "exclusiveMinimum", check2.value, check2.message, refs);
+            setResponseValueAndErrors(res, "exclusiveMinimum", check3.value, check3.message, refs);
           }
         } else {
-          if (!check2.inclusive) {
+          if (!check3.inclusive) {
             res.exclusiveMinimum = true;
           }
-          setResponseValueAndErrors(res, "minimum", check2.value, check2.message, refs);
+          setResponseValueAndErrors(res, "minimum", check3.value, check3.message, refs);
         }
         break;
       case "max":
         if (refs.target === "jsonSchema7") {
-          if (check2.inclusive) {
-            setResponseValueAndErrors(res, "maximum", check2.value, check2.message, refs);
+          if (check3.inclusive) {
+            setResponseValueAndErrors(res, "maximum", check3.value, check3.message, refs);
           } else {
-            setResponseValueAndErrors(res, "exclusiveMaximum", check2.value, check2.message, refs);
+            setResponseValueAndErrors(res, "exclusiveMaximum", check3.value, check3.message, refs);
           }
         } else {
-          if (!check2.inclusive) {
+          if (!check3.inclusive) {
             res.exclusiveMaximum = true;
           }
-          setResponseValueAndErrors(res, "maximum", check2.value, check2.message, refs);
+          setResponseValueAndErrors(res, "maximum", check3.value, check3.message, refs);
         }
         break;
       case "multipleOf":
-        setResponseValueAndErrors(res, "multipleOf", check2.value, check2.message, refs);
+        setResponseValueAndErrors(res, "multipleOf", check3.value, check3.message, refs);
         break;
     }
   }
@@ -17458,15 +18144,15 @@ var integerDateParser = (def, refs) => {
   if (refs.target === "openApi3") {
     return res;
   }
-  for (const check2 of def.checks) {
-    switch (check2.kind) {
+  for (const check3 of def.checks) {
+    switch (check3.kind) {
       case "min":
         setResponseValueAndErrors(
           res,
           "minimum",
-          check2.value,
+          check3.value,
           // This is in milliseconds
-          check2.message,
+          check3.message,
           refs
         );
         break;
@@ -17474,9 +18160,9 @@ var integerDateParser = (def, refs) => {
         setResponseValueAndErrors(
           res,
           "maximum",
-          check2.value,
+          check3.value,
           // This is in milliseconds
-          check2.message,
+          check3.message,
           refs
         );
         break;
@@ -17622,118 +18308,118 @@ function parseStringDef(def, refs) {
     type: "string"
   };
   if (def.checks) {
-    for (const check2 of def.checks) {
-      switch (check2.kind) {
+    for (const check3 of def.checks) {
+      switch (check3.kind) {
         case "min":
-          setResponseValueAndErrors(res, "minLength", typeof res.minLength === "number" ? Math.max(res.minLength, check2.value) : check2.value, check2.message, refs);
+          setResponseValueAndErrors(res, "minLength", typeof res.minLength === "number" ? Math.max(res.minLength, check3.value) : check3.value, check3.message, refs);
           break;
         case "max":
-          setResponseValueAndErrors(res, "maxLength", typeof res.maxLength === "number" ? Math.min(res.maxLength, check2.value) : check2.value, check2.message, refs);
+          setResponseValueAndErrors(res, "maxLength", typeof res.maxLength === "number" ? Math.min(res.maxLength, check3.value) : check3.value, check3.message, refs);
           break;
         case "email":
           switch (refs.emailStrategy) {
             case "format:email":
-              addFormat(res, "email", check2.message, refs);
+              addFormat(res, "email", check3.message, refs);
               break;
             case "format:idn-email":
-              addFormat(res, "idn-email", check2.message, refs);
+              addFormat(res, "idn-email", check3.message, refs);
               break;
             case "pattern:zod":
-              addPattern(res, zodPatterns.email, check2.message, refs);
+              addPattern(res, zodPatterns.email, check3.message, refs);
               break;
           }
           break;
         case "url":
-          addFormat(res, "uri", check2.message, refs);
+          addFormat(res, "uri", check3.message, refs);
           break;
         case "uuid":
-          addFormat(res, "uuid", check2.message, refs);
+          addFormat(res, "uuid", check3.message, refs);
           break;
         case "regex":
-          addPattern(res, check2.regex, check2.message, refs);
+          addPattern(res, check3.regex, check3.message, refs);
           break;
         case "cuid":
-          addPattern(res, zodPatterns.cuid, check2.message, refs);
+          addPattern(res, zodPatterns.cuid, check3.message, refs);
           break;
         case "cuid2":
-          addPattern(res, zodPatterns.cuid2, check2.message, refs);
+          addPattern(res, zodPatterns.cuid2, check3.message, refs);
           break;
         case "startsWith":
-          addPattern(res, RegExp(`^${escapeLiteralCheckValue(check2.value, refs)}`), check2.message, refs);
+          addPattern(res, RegExp(`^${escapeLiteralCheckValue(check3.value, refs)}`), check3.message, refs);
           break;
         case "endsWith":
-          addPattern(res, RegExp(`${escapeLiteralCheckValue(check2.value, refs)}$`), check2.message, refs);
+          addPattern(res, RegExp(`${escapeLiteralCheckValue(check3.value, refs)}$`), check3.message, refs);
           break;
         case "datetime":
-          addFormat(res, "date-time", check2.message, refs);
+          addFormat(res, "date-time", check3.message, refs);
           break;
         case "date":
-          addFormat(res, "date", check2.message, refs);
+          addFormat(res, "date", check3.message, refs);
           break;
         case "time":
-          addFormat(res, "time", check2.message, refs);
+          addFormat(res, "time", check3.message, refs);
           break;
         case "duration":
-          addFormat(res, "duration", check2.message, refs);
+          addFormat(res, "duration", check3.message, refs);
           break;
         case "length":
-          setResponseValueAndErrors(res, "minLength", typeof res.minLength === "number" ? Math.max(res.minLength, check2.value) : check2.value, check2.message, refs);
-          setResponseValueAndErrors(res, "maxLength", typeof res.maxLength === "number" ? Math.min(res.maxLength, check2.value) : check2.value, check2.message, refs);
+          setResponseValueAndErrors(res, "minLength", typeof res.minLength === "number" ? Math.max(res.minLength, check3.value) : check3.value, check3.message, refs);
+          setResponseValueAndErrors(res, "maxLength", typeof res.maxLength === "number" ? Math.min(res.maxLength, check3.value) : check3.value, check3.message, refs);
           break;
         case "includes": {
-          addPattern(res, RegExp(escapeLiteralCheckValue(check2.value, refs)), check2.message, refs);
+          addPattern(res, RegExp(escapeLiteralCheckValue(check3.value, refs)), check3.message, refs);
           break;
         }
         case "ip": {
-          if (check2.version !== "v6") {
-            addFormat(res, "ipv4", check2.message, refs);
+          if (check3.version !== "v6") {
+            addFormat(res, "ipv4", check3.message, refs);
           }
-          if (check2.version !== "v4") {
-            addFormat(res, "ipv6", check2.message, refs);
+          if (check3.version !== "v4") {
+            addFormat(res, "ipv6", check3.message, refs);
           }
           break;
         }
         case "base64url":
-          addPattern(res, zodPatterns.base64url, check2.message, refs);
+          addPattern(res, zodPatterns.base64url, check3.message, refs);
           break;
         case "jwt":
-          addPattern(res, zodPatterns.jwt, check2.message, refs);
+          addPattern(res, zodPatterns.jwt, check3.message, refs);
           break;
         case "cidr": {
-          if (check2.version !== "v6") {
-            addPattern(res, zodPatterns.ipv4Cidr, check2.message, refs);
+          if (check3.version !== "v6") {
+            addPattern(res, zodPatterns.ipv4Cidr, check3.message, refs);
           }
-          if (check2.version !== "v4") {
-            addPattern(res, zodPatterns.ipv6Cidr, check2.message, refs);
+          if (check3.version !== "v4") {
+            addPattern(res, zodPatterns.ipv6Cidr, check3.message, refs);
           }
           break;
         }
         case "emoji":
-          addPattern(res, zodPatterns.emoji(), check2.message, refs);
+          addPattern(res, zodPatterns.emoji(), check3.message, refs);
           break;
         case "ulid": {
-          addPattern(res, zodPatterns.ulid, check2.message, refs);
+          addPattern(res, zodPatterns.ulid, check3.message, refs);
           break;
         }
         case "base64": {
           switch (refs.base64Strategy) {
             case "format:binary": {
-              addFormat(res, "binary", check2.message, refs);
+              addFormat(res, "binary", check3.message, refs);
               break;
             }
             case "contentEncoding:base64": {
-              setResponseValueAndErrors(res, "contentEncoding", "base64", check2.message, refs);
+              setResponseValueAndErrors(res, "contentEncoding", "base64", check3.message, refs);
               break;
             }
             case "pattern:zod": {
-              addPattern(res, zodPatterns.base64, check2.message, refs);
+              addPattern(res, zodPatterns.base64, check3.message, refs);
               break;
             }
           }
           break;
         }
         case "nanoid": {
-          addPattern(res, zodPatterns.nanoid, check2.message, refs);
+          addPattern(res, zodPatterns.nanoid, check3.message, refs);
         }
         case "toLowerCase":
         case "toUpperCase":
@@ -17741,7 +18427,7 @@ function parseStringDef(def, refs) {
           break;
         default:
           /* @__PURE__ */ ((_) => {
-          })(check2);
+          })(check3);
       }
     }
   }
@@ -18111,42 +18797,42 @@ function parseNumberDef(def, refs) {
   };
   if (!def.checks)
     return res;
-  for (const check2 of def.checks) {
-    switch (check2.kind) {
+  for (const check3 of def.checks) {
+    switch (check3.kind) {
       case "int":
         res.type = "integer";
-        addErrorMessage(res, "type", check2.message, refs);
+        addErrorMessage(res, "type", check3.message, refs);
         break;
       case "min":
         if (refs.target === "jsonSchema7") {
-          if (check2.inclusive) {
-            setResponseValueAndErrors(res, "minimum", check2.value, check2.message, refs);
+          if (check3.inclusive) {
+            setResponseValueAndErrors(res, "minimum", check3.value, check3.message, refs);
           } else {
-            setResponseValueAndErrors(res, "exclusiveMinimum", check2.value, check2.message, refs);
+            setResponseValueAndErrors(res, "exclusiveMinimum", check3.value, check3.message, refs);
           }
         } else {
-          if (!check2.inclusive) {
+          if (!check3.inclusive) {
             res.exclusiveMinimum = true;
           }
-          setResponseValueAndErrors(res, "minimum", check2.value, check2.message, refs);
+          setResponseValueAndErrors(res, "minimum", check3.value, check3.message, refs);
         }
         break;
       case "max":
         if (refs.target === "jsonSchema7") {
-          if (check2.inclusive) {
-            setResponseValueAndErrors(res, "maximum", check2.value, check2.message, refs);
+          if (check3.inclusive) {
+            setResponseValueAndErrors(res, "maximum", check3.value, check3.message, refs);
           } else {
-            setResponseValueAndErrors(res, "exclusiveMaximum", check2.value, check2.message, refs);
+            setResponseValueAndErrors(res, "exclusiveMaximum", check3.value, check3.message, refs);
           }
         } else {
-          if (!check2.inclusive) {
+          if (!check3.inclusive) {
             res.exclusiveMaximum = true;
           }
-          setResponseValueAndErrors(res, "maximum", check2.value, check2.message, refs);
+          setResponseValueAndErrors(res, "maximum", check3.value, check3.message, refs);
         }
         break;
       case "multipleOf":
-        setResponseValueAndErrors(res, "multipleOf", check2.value, check2.message, refs);
+        setResponseValueAndErrors(res, "multipleOf", check3.value, check3.message, refs);
         break;
     }
   }
@@ -21400,7 +22086,7 @@ function jsonResult(payload) {
 }
 function errorResult(error2) {
   const message = error2 instanceof Error ? error2.message : String(error2);
-  return {
+  const result = {
     isError: true,
     content: [
       {
@@ -21409,6 +22095,13 @@ function errorResult(error2) {
       }
     ]
   };
+  if (isScenePortBridgeError(error2)) {
+    result.structuredContent = {
+      status: "error",
+      error: error2.toJSON()
+    };
+  }
+  return result;
 }
 function toStructuredContent(payload) {
   if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
@@ -21416,9 +22109,6 @@ function toStructuredContent(payload) {
   }
   return { value: payload };
 }
-
-// src/version.ts
-var VERSION = "0.4.0";
 
 // src/server.ts
 function createScenePortServer(client) {
@@ -21916,6 +22606,24 @@ function createScenePortServer(client) {
     },
     toolGet("/playtest/report")
   );
+  server.registerTool(
+    "unity_audit_log",
+    {
+      title: "Unity Audit Log",
+      description: "Read recent ScenePort mutating requests recorded locally by the Unity bridge.",
+      inputSchema: {
+        limit: external_exports.number().int().min(1).max(500).default(100).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ limit }) => {
+      try {
+        return jsonResult(await client.get("/audit-log", { limit }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
   server.registerResource(
     "sceneport-project-status",
     "sceneport://project/status",
@@ -21925,6 +22633,16 @@ function createScenePortServer(client) {
       mimeType: "application/json"
     },
     async (uri) => jsonResource(uri, await client.get("/health"))
+  );
+  server.registerResource(
+    "sceneport-bridge-capabilities",
+    "sceneport://bridge/capabilities",
+    {
+      title: "ScenePort Bridge Capabilities",
+      description: "Bridge protocol version, capability hash, and supported Unity endpoint groups.",
+      mimeType: "application/json"
+    },
+    async (uri) => jsonResource(uri, await client.getCapabilities())
   );
   server.registerResource(
     "sceneport-active-scene",
@@ -22026,6 +22744,16 @@ function createScenePortServer(client) {
     },
     async (uri) => jsonResource(uri, await client.get("/playtest/report"))
   );
+  server.registerResource(
+    "sceneport-audit-log",
+    "sceneport://audit/log",
+    {
+      title: "ScenePort Audit Log",
+      description: "Recent local ScenePort mutating requests and results.",
+      mimeType: "application/json"
+    },
+    async (uri) => jsonResource(uri, await client.get("/audit-log", { limit: 200 }))
+  );
   function registerPrompt(name, title, description, text) {
     server.registerPrompt(
       name,
@@ -22094,237 +22822,22 @@ function createScenePortServer(client) {
     "Run pre-build checks and identify blockers.",
     "Use ScenePort to inspect Unity status, package dependencies, compilation status, console errors, active scene state, and relevant tests. Return a concise build-readiness checklist with blockers and recommended fixes."
   );
+  registerPrompt(
+    "sceneport:team-readiness-smoke",
+    "Team Readiness Smoke",
+    "Run the v0.5 readiness loop for a Unity project.",
+    "Use ScenePort to run a team-readiness smoke: call unity_status, inspect scene hierarchy and selection, read console errors, run relevant EditMode tests, start a short playtest with one capture when safe, read the audit log, and return blockers plus exact follow-up tasks."
+  );
   return server;
 }
 
-// src/discovery.ts
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-var DEFAULT_URL = "http://127.0.0.1:38987";
-var MAX_WALK_DEPTH = 10;
-function discoveryFilePath(projectPath) {
-  return join(projectPath, "Library", "ScenePort", "bridge.json");
-}
-function readBridgeFile(projectPath) {
-  try {
-    const path = discoveryFilePath(projectPath);
-    if (!existsSync(path)) {
-      return null;
-    }
-    const parsed = JSON.parse(readFileSync(path, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-function looksLikeUnityProject(dir) {
-  return existsSync(join(dir, "Assets")) && existsSync(join(dir, "ProjectSettings")) && existsSync(discoveryFilePath(dir));
-}
-function walkForProject(start) {
-  let dir = start;
-  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
-    if (looksLikeUnityProject(dir)) {
-      return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-  return null;
-}
-function normalizeUrl(url) {
-  return url.replace(/\/$/, "");
-}
-function discoverBridge(env = process.env, cwd = process.cwd()) {
-  const explicitUrl = env.SCENEPORT_UNITY_URL;
-  const explicitToken = env.SCENEPORT_TOKEN;
-  const projectPathEnv = env.SCENEPORT_PROJECT_PATH;
-  let file = null;
-  let fileProject = null;
-  if (projectPathEnv) {
-    file = readBridgeFile(projectPathEnv);
-    if (file) {
-      fileProject = projectPathEnv;
-    }
-  }
-  if (!file) {
-    const walked = walkForProject(cwd);
-    if (walked) {
-      file = readBridgeFile(walked);
-      fileProject = walked;
-    }
-  }
-  if (explicitUrl) {
-    return {
-      baseUrl: normalizeUrl(explicitUrl),
-      token: explicitToken ?? file?.token,
-      projectPath: file?.projectPath ?? projectPathEnv,
-      source: "env-url",
-      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0
-    };
-  }
-  if (file?.url) {
-    return {
-      baseUrl: normalizeUrl(file.url),
-      token: explicitToken ?? file.token,
-      projectPath: file.projectPath ?? fileProject ?? void 0,
-      source: projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk",
-      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0
-    };
-  }
-  return {
-    baseUrl: DEFAULT_URL,
-    token: explicitToken,
-    source: "default"
-  };
-}
-function projectPathsEqual(a, b) {
-  if (!a || !b) {
-    return false;
-  }
-  const na = resolve(a);
-  const nb = resolve(b);
-  if (process.platform === "darwin" || process.platform === "win32") {
-    return na.toLowerCase() === nb.toLowerCase();
-  }
-  return na === nb;
-}
-
-// src/unityClient.ts
-var TOKEN_HEADER = "X-ScenePort-Token";
-var UnityBridgeClient = class {
-  target;
-  expectedProjectPath;
-  identityResolved = false;
-  identityError = null;
-  constructor(target, env = process.env) {
-    if (typeof target === "string") {
-      const discovered = discoverBridge(env);
-      this.target = { ...discovered, baseUrl: target.replace(/\/$/, ""), source: "env-url" };
-    } else {
-      this.target = target ?? discoverBridge(env);
-    }
-    this.expectedProjectPath = env.SCENEPORT_PROJECT_PATH;
-  }
-  get baseUrl() {
-    return this.target.baseUrl;
-  }
-  async get(path, params = {}) {
-    await this.guardIdentity();
-    return this.request("GET", path, params);
-  }
-  async post(path, body) {
-    await this.guardIdentity();
-    return this.request("POST", path, void 0, body);
-  }
-  /**
-   * Health plus discovery/identity metadata for unity_status. Never throws on identity
-   * mismatch — it reports it, so the tool can be used to diagnose a wrong-project connection.
-   */
-  async statusReport() {
-    let health = {};
-    let error2;
-    try {
-      const result = await this.request("GET", "/health");
-      if (result && typeof result === "object") {
-        health = result;
-      }
-    } catch (e) {
-      error2 = e instanceof Error ? e.message : String(e);
-    }
-    const actualPath = typeof health.projectPath === "string" ? health.projectPath : void 0;
-    const identityMatch = this.expectedProjectPath ? projectPathsEqual(actualPath, this.expectedProjectPath) : null;
-    const legacyBridge = health.projectId === void 0 && !error2;
-    return {
-      ...health,
-      ...error2 ? { status: "error", error: error2 } : {},
-      discoverySource: this.target.source,
-      discoveryFilePath: this.target.discoveryFilePath ?? null,
-      tokenConfigured: Boolean(this.target.token),
-      identityMatch,
-      ...legacyBridge ? { warning: "Unity bridge is outdated (pre-0.3); update the ScenePort UPM package to enable auth and discovery." } : {}
-    };
-  }
-  async guardIdentity() {
-    if (!this.expectedProjectPath) {
-      return;
-    }
-    if (!this.identityResolved) {
-      try {
-        const health = await this.request("GET", "/health");
-        const actual = typeof health?.projectPath === "string" ? health.projectPath : void 0;
-        if (actual && !projectPathsEqual(actual, this.expectedProjectPath)) {
-          this.identityError = `ScenePort is connected to Unity project '${actual}' but SCENEPORT_PROJECT_PATH expects '${this.expectedProjectPath}'. Another Unity instance probably owns this port. Close it, or point SCENEPORT_UNITY_URL at the correct bridge (see Library/ScenePort/bridge.json in the expected project).`;
-        }
-        this.identityResolved = true;
-      } catch {
-      }
-    }
-    if (this.identityError) {
-      throw new Error(this.identityError);
-    }
-  }
-  async request(method, path, params = {}, body, isRetry = false) {
-    const url = this.url(path, params);
-    const headers = { Accept: "application/json" };
-    if (this.target.token) {
-      headers[TOKEN_HEADER] = this.target.token;
-    }
-    let response;
-    try {
-      response = method === "GET" ? await fetch(url, { method, headers }) : await fetch(url, {
-        method,
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-    } catch (error2) {
-      if (!isRetry && this.target.source !== "env-url" && this.rediscover()) {
-        return this.request(method, path, params, body, true);
-      }
-      throw error2;
-    }
-    if (response.status === 401 && !isRetry && this.rediscover()) {
-      return this.request(method, path, params, body, true);
-    }
-    return this.parse(response);
-  }
-  rediscover() {
-    const next = discoverBridge();
-    const changed = next.baseUrl !== this.target.baseUrl || next.token !== this.target.token;
-    this.target = next;
-    return changed;
-  }
-  url(path, params = {}) {
-    const url = new URL(path, this.target.baseUrl);
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== void 0) {
-        url.searchParams.set(key, String(value));
-      }
-    }
-    return url;
-  }
-  async parse(response) {
-    const text = await response.text();
-    let payload = text;
-    if (text.length > 0) {
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        payload = { status: "error", error: text };
-      }
-    }
-    if (!response.ok) {
-      const message = typeof payload === "object" && payload && "error" in payload ? String(payload.error) : `Unity bridge returned HTTP ${response.status}`;
-      throw new Error(message);
-    }
-    return payload;
-  }
-};
-
 // src/index.ts
 async function main() {
+  const command = process.argv[2];
+  if (command === "doctor" || command === "--doctor") {
+    process.exitCode = await runDoctor();
+    return;
+  }
   const client = new UnityBridgeClient();
   const server = createScenePortServer(client);
   const transport = new StdioServerTransport();

@@ -31,11 +31,18 @@ Unity EditMode:
 
 - Bridge starts and stops.
 - Health endpoint schema.
+- Capabilities endpoint schema.
+- Discovery v2 owner lease, heartbeat, owner-safe delete, and v1 token compatibility.
+- AssetImportWorker process classification never hosts the bridge.
 - Scene hierarchy reads active scene.
 - Selection endpoint reports selected GameObjects.
 - Console ring buffer stores bounded log entries.
 - Create GameObject registers Undo.
 - Set transform registers Undo.
+- Malformed JSON POSTs return `400` and do not mutate.
+- Mutating requests are recorded in the local audit log.
+- Serialized-property writes reject internal/non-editable/non-scene targets.
+- 1,000-request health stress does not hang the editor bridge.
 
 MCP Server:
 
@@ -63,8 +70,21 @@ First-run smoke:
 2. Add package from disk in Unity.
 3. Run `curl http://127.0.0.1:38987/health`.
 4. Build server with `npm install && npm run build`.
-5. Connect Claude Code or Codex.
-6. Ask for active scene hierarchy.
+5. Run `sceneport doctor` or `node <ScenePort>/plugins/sceneport/server/build/index.js doctor`.
+6. Run `SCENEPORT_PROJECT_PATH=<project> npm run smoke:team-readiness` from
+   `plugins/sceneport/server`.
+7. Connect Claude Code or Codex.
+8. Ask for active scene hierarchy.
+
+Team-readiness smoke:
+
+1. Import the `Team Readiness Demo` sample from Unity Package Manager.
+2. Add `ScenePortDemoTarget` to a GameObject.
+3. Ask an MCP client to run `sceneport:team-readiness-smoke`.
+4. Confirm status, hierarchy, console, tests/playtest when safe, and `unity_audit_log`
+   all return useful results.
+5. Confirm `Temp/ScenePort/team-readiness-smoke.json` or equivalent CI artifact is attached
+   to release evidence when the smoke runner is used.
 
 Regression smoke:
 
@@ -100,4 +120,8 @@ vitest suite (identity guard), but should be spot-checked manually before a rele
 - All JSON manifests validate.
 - Auth token required on all endpoints except `/health`.
 - `npm test` and the EditMode suite pass; versions in sync; committed bundle is fresh.
+- Pull requests and tagged releases must run Unity EditMode tests with `UNITY_LICENSE`;
+  skipping is not allowed.
+- Releases must generate `RELEASE_EVIDENCE.md` with test gates, versions, demo evidence
+  pointers, risks, and rollback notes.
 - README quick start works from a clean checkout.

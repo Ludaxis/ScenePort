@@ -10,7 +10,7 @@ The trust boundary is the local OS user. Anything that can read `Library/` can a
 modify `Assets/`, so the token at rest there is not a secret from local code — it exists
 to stop *remote* and *browser* callers, which cannot read local files.
 
-## Defaults (implemented in v0.3)
+## Defaults (implemented in v0.5)
 
 - The Unity bridge binds to `127.0.0.1` only, on the first free port in 38987–38996.
 - Every endpoint except `/health` requires the `X-ScenePort-Token` header (constant-time
@@ -21,6 +21,11 @@ to stop *remote* and *browser* callers, which cannot read local files.
   POST bodies that are not `application/json`. Request bodies are capped at 1 MiB.
 - The bridge does not expose arbitrary code execution and does not delete assets or scenes.
 - Write tools are narrow, typed, and use Unity Undo.
+- Malformed or non-object JSON POST bodies return `400` before handlers can mutate state.
+- Serialized-property writes reject internal script/prefab references, non-editable
+  properties, and non-scene object targets.
+- Mutating requests are recorded to a bounded local audit log in
+  `Library/ScenePort/audit.json`.
 - Tool output is local; ScenePort does not send it to third-party services.
 
 ## Threats and how they are addressed
@@ -45,6 +50,11 @@ Request Flooding:
 
 Rejected requests never enter the main-thread work queue, so they cannot stall the editor; bodies are size-capped.
 
+Malformed Input:
+
+Invalid JSON is rejected as a transport error instead of becoming an empty request with
+defaulted write values.
+
 Arbitrary Code Execution:
 
 Dynamic C# execution is useful for power users but dangerous. It remains a future explicit dev-mode feature with a visible warning, separate enablement, and audit logs.
@@ -54,6 +64,8 @@ Dynamic C# execution is useful for power users but dangerous. It remains a futur
 - `/health` is unauthenticated by design (reachability handshake and `curl` debugging), so it exposes the project path and name to any local process. No tokens or mutating actions are reachable without the token.
 - The token at rest is readable by any process running as the same OS user; the design goal is to exclude remote/browser callers, not other local same-user processes.
 - A cloud-synced `Library/` folder would sync the token; keep `Library/` out of sync tools (the standard Unity `.gitignore` already excludes it).
+- The audit log intentionally stores local object paths, property paths, and action summaries.
+  Keep `Library/` local-only.
 
 ## Policy For New Tools
 
@@ -69,6 +81,7 @@ Write tools:
 - Must use Undo where possible.
 - Must return a clear summary of changed objects.
 - Must be covered by QA tests.
+- Must record mutating requests in the local audit log.
 
 Destructive tools:
 

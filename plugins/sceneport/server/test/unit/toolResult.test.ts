@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { bridgeError } from "../../src/bridgeError.js";
 import { errorResult, jsonResult } from "../../src/toolResult.js";
 
 describe("jsonResult", () => {
@@ -38,7 +39,29 @@ describe("errorResult", () => {
     expect(errorResult("raw").content[0].text).toBe("raw");
   });
 
-  it("has no structuredContent", () => {
+  it("has no structuredContent for unknown errors", () => {
     expect("structuredContent" in errorResult(new Error("x"))).toBe(false);
+  });
+
+  it("exposes ScenePort errors as structuredContent", () => {
+    const result = errorResult(
+      bridgeError({
+        code: "editor.busy.compiling",
+        category: "editor",
+        retryable: true,
+        retryAfterMs: 1000,
+        message: "Unity is compiling.",
+      }),
+    );
+    expect(result.structuredContent).toEqual({
+      status: "error",
+      error: expect.objectContaining({
+        code: "editor.busy.compiling",
+        category: "editor",
+        retryable: true,
+        retryAfterMs: 1000,
+        message: "Unity is compiling.",
+      }),
+    });
   });
 });

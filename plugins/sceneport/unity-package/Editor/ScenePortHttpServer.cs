@@ -135,7 +135,13 @@ namespace ScenePort.McpBridge.Editor
 
                 if (request.ContentLength64 > MaxBodyBytes)
                 {
-                    Write(context, 413, ScenePortJson.Serialize(new ErrorResponse("Request body too large.")));
+                    Write(context, 413, ScenePortJson.Serialize(new ErrorResponse(
+                        "request.body_too_large",
+                        "Request body too large.",
+                        "request",
+                        false,
+                        null,
+                        "Send a smaller request body.")));
                     return;
                 }
 
@@ -147,16 +153,53 @@ namespace ScenePort.McpBridge.Editor
 
                 var path = request.Url.AbsolutePath;
                 var query = request.Url.Query;
-                var response = mainThreadExecutor(() => router.Dispatch(path, query, body));
-                Write(context, 200, response);
+                var method = request.HttpMethod;
+                var response = mainThreadExecutor(() =>
+                {
+                    var dispatch = router.DispatchWithStatus(path, query, body, method);
+                    return dispatch.StatusCode + "\n" + dispatch.Body;
+                });
+                var newline = response.IndexOf('\n');
+                var status = int.Parse(response.Substring(0, newline), System.Globalization.CultureInfo.InvariantCulture);
+                Write(context, status, response.Substring(newline + 1));
             }
             catch (RequestBodyTooLargeException)
             {
-                Write(context, 413, ScenePortJson.Serialize(new ErrorResponse("Request body too large.")));
+                Write(context, 413, ScenePortJson.Serialize(new ErrorResponse(
+                    "request.body_too_large",
+                    "Request body too large.",
+                    "request",
+                    false,
+                    null,
+                    "Send a smaller request body.")));
+            }
+            catch (ScenePortBadRequestException ex)
+            {
+                Write(context, 400, ScenePortJson.Serialize(new ErrorResponse(
+                    "request.invalid",
+                    ex.Message,
+                    "request",
+                    false,
+                    null,
+                    "Send a valid JSON object body for write endpoints.")));
+            }
+            catch (TimeoutException ex)
+            {
+                Write(context, 503, ScenePortJson.Serialize(new ErrorResponse(
+                    "editor.main_thread.timeout",
+                    ex.Message,
+                    "editor",
+                    true,
+                    1000,
+                    "Wait for Unity to finish the current editor operation, then retry.")));
             }
             catch (Exception ex)
             {
-                Write(context, 500, ScenePortJson.Serialize(new ErrorResponse(ex.Message)));
+                Write(context, 500, ScenePortJson.Serialize(new ErrorResponse(
+                    "operation.failed",
+                    ex.Message,
+                    "bridge",
+                    true)));
             }
         }
 

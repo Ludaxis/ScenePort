@@ -14,6 +14,11 @@ namespace ScenePort.McpBridge.Editor
                 : Application.dataPath;
         }
 
+        internal static string ScenePortLibraryPath()
+        {
+            return Path.Combine(ProjectPath(), "Library", "ScenePort");
+        }
+
         internal static string SanitizeFileName(string value)
         {
             var invalid = Path.GetInvalidFileNameChars();

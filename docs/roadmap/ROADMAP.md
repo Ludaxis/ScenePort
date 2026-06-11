@@ -44,13 +44,14 @@
 - Tracked playtest frame captures
 - Agent-readable report with console observations and recommendations
 
-## v0.5: Team Readiness
+## v0.5: Team Readiness (shipped)
 
 - Audit log of mutating requests
 - `sceneport doctor` diagnostics command
-- Sample Unity project
+- Team Readiness Demo UPM sample
 - Unity-in-CI via game-ci with a project license
 - Marketplace install guide for local Codex and Claude workflows
+- Malformed JSON and write-surface hardening
 
 ## v0.6: Authoring Workflows
 

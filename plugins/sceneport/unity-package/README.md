@@ -26,6 +26,8 @@ The ScenePort MCP server reads that file to connect with zero configuration. Use
   headers, before any editor work — this defeats CSRF and DNS rebinding.
 - Uses Unity Editor APIs instead of direct scene YAML edits, with `Undo` for create,
   transform, component, and serialized-property operations.
+- Rejects malformed/non-object JSON request bodies before handlers can mutate editor state.
+- Records mutating requests to a bounded local audit log at `Library/ScenePort/audit.json`.
 - Keeps arbitrary code execution out of the default bridge.
 - Non-finite numbers serialize as `null`.
 
@@ -33,7 +35,8 @@ Toggle the token requirement with `Tools > ScenePort > Require Auth Token` (defa
 
 ## Implemented Endpoints
 
-Status codes: logical errors return `200` with a `{ "status": "error" }` body; rejected
+Status codes: logical errors return `200` with a `{ "status": "error" }` body; malformed
+JSON POST bodies return `400`; rejected
 requests return `401` (missing/invalid token), `403` (Origin/Host/method), `413` (body too
 large), `415` (non-JSON POST). `/health` is the only endpoint exempt from the token.
 
@@ -62,3 +65,4 @@ large), `415` (non-JSON POST). `/health` is the only endpoint exempt from the to
 - `POST /playtest/capture-frame`
 - `POST /playtest/send-key`
 - `POST /playtest/send-click`
+- `GET /audit-log`

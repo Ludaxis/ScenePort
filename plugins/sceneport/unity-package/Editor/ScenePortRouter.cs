@@ -10,10 +10,29 @@ namespace ScenePort.McpBridge.Editor
     internal sealed class ScenePortContext
     {
         internal ScenePortConsoleBuffer Console;
+        internal ScenePortAuditLog Audit;
         internal int BoundPort;
         internal string Version = "unknown";
+        internal int ProtocolVersion = ScenePortProtocol.Version;
+        internal string CapabilitiesHash = ScenePortProtocol.CapabilitiesHash;
+        internal string OwnerLeaseId;
+        internal string StartedUtc;
+        internal string EditorRole;
+        internal string ProcessName;
         internal bool TokenRequired;
         internal string Token;
+    }
+
+    internal sealed class ScenePortDispatchResult
+    {
+        internal int StatusCode;
+        internal string Body;
+
+        internal ScenePortDispatchResult(int statusCode, string body)
+        {
+            StatusCode = statusCode;
+            Body = body;
+        }
     }
 
     /// <summary>
@@ -33,6 +52,7 @@ namespace ScenePort.McpBridge.Editor
             routes = new Dictionary<string, Func<ScenePortRequest, ScenePortContext, object>>(StringComparer.Ordinal)
             {
                 ["/health"] = EditorStateHandlers.Health,
+                ["/capabilities"] = EditorStateHandlers.Capabilities,
                 ["/scene"] = SceneQueryHandlers.Scene,
                 ["/scene-hierarchy"] = SceneQueryHandlers.Hierarchy,
                 ["/selection"] = SceneQueryHandlers.Selection,
@@ -57,6 +77,7 @@ namespace ScenePort.McpBridge.Editor
                 ["/playtest/capture-frame"] = PlaytestHandlers.CaptureFrame,
                 ["/playtest/send-key"] = PlaytestHandlers.SendKey,
                 ["/playtest/send-click"] = PlaytestHandlers.SendClick,
+                ["/audit-log"] = EditorStateHandlers.AuditLog,
             };
         }
 
@@ -69,17 +90,63 @@ namespace ScenePort.McpBridge.Editor
         /// Dispatch a request to its handler and return serialized JSON. Must be called on the
         /// Unity main thread (handlers touch editor state). Throws if a handler throws.
         /// </summary>
-        internal string Dispatch(string path, string queryString, string body)
+        internal string Dispatch(string path, string queryString, string body, string method = "GET")
+        {
+            return DispatchWithStatus(path, queryString, body, method).Body;
+        }
+
+        internal ScenePortDispatchResult DispatchWithStatus(string path, string queryString, string body, string method = "GET")
         {
             var normalized = Normalize(path);
             if (!routes.TryGetValue(normalized, out var handler))
             {
-                return ScenePortJson.Serialize(new ErrorResponse("Unknown endpoint: " + normalized));
+                var notFound = new ErrorResponse(
+                    "request.unknown_endpoint",
+                    "Unknown endpoint: " + normalized,
+                    "request",
+                    false);
+                return new ScenePortDispatchResult(404, ScenePortJson.Serialize(notFound));
             }
 
             var request = new ScenePortRequest(queryString, body);
             var result = handler(request, context);
-            return ScenePortJson.Serialize(result);
+            if (ShouldAudit(method, normalized))
+            {
+                context.Audit?.Record(method, normalized, request, result);
+            }
+            return new ScenePortDispatchResult(StatusCodeFor(result), ScenePortJson.Serialize(result));
+        }
+
+        private static int StatusCodeFor(object result)
+        {
+            var error = result as ErrorResponse;
+            if (error == null)
+            {
+                return 200;
+            }
+
+            switch (error.Code)
+            {
+                case "request.invalid":
+                    return 400;
+                case "bridge.unauthorized":
+                    return 401;
+                case "request.unknown_endpoint":
+                case "capability.unsupported":
+                    return 404;
+                case "editor.busy.compiling":
+                case "editor.busy.updating":
+                case "editor.playmode.transition":
+                case "editor.main_thread.timeout":
+                    return 503;
+                default:
+                    return 200;
+            }
+        }
+
+        private static bool ShouldAudit(string method, string path)
+        {
+            return string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase) && path != "/audit-log";
         }
 
         internal static string Normalize(string path)
@@ -87,5 +154,25 @@ namespace ScenePort.McpBridge.Editor
             var trimmed = string.IsNullOrEmpty(path) ? string.Empty : path.TrimEnd('/');
             return string.IsNullOrEmpty(trimmed) ? "/health" : trimmed;
         }
+    }
+
+    internal static class ScenePortProtocol
+    {
+        internal const int Version = 1;
+        internal const string CapabilitiesHash = "sceneport-m0-v1";
+
+        internal static readonly string[] EndpointGroups =
+        {
+            "status",
+            "scene-query",
+            "console",
+            "safe-write",
+            "assets",
+            "tests",
+            "capture",
+            "play-mode",
+            "playtest",
+            "audit",
+        };
     }
 }

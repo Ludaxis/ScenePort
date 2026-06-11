@@ -25,6 +25,25 @@ namespace ScenePort.McpBridge.Editor
                 ProjectId = PlayerSettings.productGUID.ToString("N"),
                 ProjectName = Application.productName,
                 TokenRequired = ctx.TokenRequired,
+                ProtocolVersion = ctx.ProtocolVersion,
+                CapabilitiesHash = ctx.CapabilitiesHash,
+                OwnerLeaseId = ctx.OwnerLeaseId,
+                HeartbeatUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                StartedUtc = ctx.StartedUtc,
+                EditorRole = ctx.EditorRole,
+                ProcessId = System.Diagnostics.Process.GetCurrentProcess().Id,
+                ProcessName = ctx.ProcessName,
+            };
+        }
+
+        internal static object Capabilities(ScenePortRequest req, ScenePortContext ctx)
+        {
+            return new CapabilitiesResponse
+            {
+                ProtocolVersion = ctx.ProtocolVersion,
+                BridgeVersion = ctx.Version,
+                CapabilitiesHash = ctx.CapabilitiesHash,
+                EndpointGroups = ScenePortProtocol.EndpointGroups,
             };
         }
 
@@ -48,12 +67,28 @@ namespace ScenePort.McpBridge.Editor
             };
         }
 
+        internal static object AuditLog(ScenePortRequest req, ScenePortContext ctx)
+        {
+            var limit = Mathf.Clamp(req.GetInt("limit", 100), 1, 500);
+            return new AuditLogResponse
+            {
+                Path = ctx.Audit?.Path,
+                Entries = ctx.Audit?.Snapshot(limit) ?? new System.Collections.Generic.List<AuditLogEntryDto>(),
+            };
+        }
+
         internal static object PlayMode(ScenePortRequest req, ScenePortContext ctx)
         {
             var action = req.ExtractString("action", req.GetString("action", "status")).ToLowerInvariant();
             if (EditorApplication.isCompiling || EditorApplication.isUpdating)
             {
-                return new ErrorResponse("Unity is compiling or updating assets. Play mode changes are blocked.");
+                return new ErrorResponse(
+                    EditorApplication.isCompiling ? "editor.busy.compiling" : "editor.busy.updating",
+                    "Unity is compiling or updating assets. Play mode changes are blocked.",
+                    "editor",
+                    true,
+                    1000,
+                    "Wait for Unity compilation or asset refresh to finish, then retry.");
             }
 
             if (action == "enter" && !EditorApplication.isPlaying)

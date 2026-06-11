@@ -32,7 +32,16 @@ export class FakeBridge {
   }
 
   async stop(): Promise<void> {
-    await new Promise<void>((resolve, reject) => this.server.close((err) => (err ? reject(err) : resolve())));
+    await new Promise<void>((resolve, reject) => {
+      this.server.close((err: NodeJS.ErrnoException | undefined) => {
+        if (err && err.code !== "ERR_SERVER_NOT_RUNNING") {
+          reject(err);
+          return;
+        }
+        resolve();
+      });
+      this.server.closeAllConnections?.();
+    });
   }
 
   get port(): number {

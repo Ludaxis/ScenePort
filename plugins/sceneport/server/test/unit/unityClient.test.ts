@@ -1,17 +1,58 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { UnityBridgeClient } from "../../src/unityClient.js";
 import { FakeBridge } from "../fixtures/fakeBridge.js";
 
 let bridge: FakeBridge | undefined;
+let bridge2: FakeBridge | undefined;
+let tempRoot: string | undefined;
 
 afterEach(async () => {
   if (bridge) {
     await bridge.stop();
     bridge = undefined;
   }
+  if (bridge2) {
+    await bridge2.stop();
+    bridge2 = undefined;
+  }
+  if (tempRoot) {
+    rmSync(tempRoot, { recursive: true, force: true });
+    tempRoot = undefined;
+  }
 });
 
+function makeProjectWithDiscovery(file: Record<string, unknown>): string {
+  tempRoot = mkdtempSync(join(tmpdir(), "sceneport-client-"));
+  mkdirSync(join(tempRoot, "Assets"), { recursive: true });
+  mkdirSync(join(tempRoot, "ProjectSettings"), { recursive: true });
+  mkdirSync(join(tempRoot, "Library", "ScenePort"), { recursive: true });
+  writeFileSync(join(tempRoot, "Library", "ScenePort", "bridge.json"), JSON.stringify(file));
+  return tempRoot;
+}
+
+function makeEmptyProject(): string {
+  tempRoot = mkdtempSync(join(tmpdir(), "sceneport-client-"));
+  mkdirSync(join(tempRoot, "Assets"), { recursive: true });
+  mkdirSync(join(tempRoot, "ProjectSettings"), { recursive: true });
+  mkdirSync(join(tempRoot, "Library", "ScenePort"), { recursive: true });
+  return tempRoot;
+}
+
+function writeDiscovery(project: string, file: Record<string, unknown>): void {
+  writeFileSync(join(project, "Library", "ScenePort", "bridge.json"), JSON.stringify(file));
+}
+
 describe("UnityBridgeClient URL handling", () => {
+  it("rejects non-loopback bridge URLs unless explicitly allowed", () => {
+    expect(() => new UnityBridgeClient({ baseUrl: "http://example.com:38987", source: "env-url" }, {})).toThrow(/loopback/);
+    expect(
+      () => new UnityBridgeClient({ baseUrl: "http://example.com:38987", source: "env-url" }, { SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL: "1" }),
+    ).not.toThrow();
+  });
+
   it("builds query params and skips undefined but keeps false/0", async () => {
     bridge = new FakeBridge({ "/scene-hierarchy": () => ({ body: { status: "ok" } }) });
     await bridge.start();
@@ -66,6 +107,13 @@ describe("UnityBridgeClient response parsing", () => {
     await expect(c.get("/scene")).rejects.toThrow("compiling");
   });
 
+  it("throws logical 200 error envelopes instead of returning them as success", async () => {
+    bridge = new FakeBridge({ "/play-mode": () => ({ body: { status: "error", error: "busy", code: "editor.busy.compiling" } }) });
+    await bridge.start();
+    const c = new UnityBridgeClient({ baseUrl: bridge.url, source: "env-url" }, {});
+    await expect(c.post("/play-mode", { action: "enter" })).rejects.toMatchObject({ code: "editor.busy.compiling" });
+  });
+
   it("falls back to a status message when a non-ok body is empty", async () => {
     bridge = new FakeBridge({ "/scene": () => ({ status: 503, body: "" }) });
     await bridge.start();
@@ -78,6 +126,55 @@ describe("UnityBridgeClient response parsing", () => {
     await bridge.start();
     const c = new UnityBridgeClient({ baseUrl: bridge.url, source: "env-url" }, {});
     await expect(c.get("/scene")).rejects.toThrow("plain text failure");
+  });
+});
+
+describe("UnityBridgeClient resolver freshness", () => {
+  it("re-reads discovery when bridge.json changes between requests", async () => {
+    bridge = new FakeBridge({
+      "/health": () => ({ body: { status: "ok", projectPath: tempRoot, projectId: "one" } }),
+      "/selection": () => ({ body: { status: "ok", bridge: "one" } }),
+    });
+    bridge2 = new FakeBridge({
+      "/health": () => ({ body: { status: "ok", projectPath: tempRoot, projectId: "two" } }),
+      "/selection": () => ({ body: { status: "ok", bridge: "two" } }),
+    });
+    await bridge.start();
+    await bridge2.start();
+
+    const project = makeEmptyProject();
+    writeDiscovery(project, {
+      schemaVersion: 2,
+      url: bridge.url,
+      token: "one",
+      projectPath: project,
+      projectId: "one",
+      ownerLeaseId: "lease-one",
+      startedUtc: "one",
+      heartbeatUtc: new Date().toISOString(),
+    });
+    const c = new UnityBridgeClient(undefined, { SCENEPORT_PROJECT_PATH: project }, project);
+    expect(await c.get("/selection")).toMatchObject({ bridge: "one" });
+
+    writeDiscovery(project, {
+      schemaVersion: 2,
+      url: bridge2.url,
+      token: "two",
+      projectPath: project,
+      projectId: "two",
+      ownerLeaseId: "lease-two",
+      startedUtc: "two",
+      heartbeatUtc: new Date().toISOString(),
+    });
+
+    expect(await c.get("/selection")).toMatchObject({ bridge: "two" });
+  });
+
+  it("classifies missing capabilities as legacy v0.5", async () => {
+    bridge = new FakeBridge({ "/capabilities": () => ({ status: 404, body: { status: "error", error: "nope" } }) });
+    await bridge.start();
+    const c = new UnityBridgeClient({ baseUrl: bridge.url, source: "env-url" }, {});
+    await expect(c.getCapabilities()).resolves.toMatchObject({ mode: "legacy-v0.5" });
   });
 });
 

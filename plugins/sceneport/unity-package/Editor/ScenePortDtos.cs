@@ -88,6 +88,22 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("supportsAuditLog")] public bool SupportsAuditLog = true;
         [JsonProperty("supportsSafeWrites")] public bool SupportsSafeWrites = true;
         [JsonProperty("supportsPlaytests")] public bool SupportsPlaytests = true;
+        [JsonProperty("supportsPerception")] public bool SupportsPerception = true;
+        [JsonProperty("supportsProofLoop")] public bool SupportsProofLoop = true;
+        [JsonProperty("supportsDiagnostics")] public bool SupportsDiagnostics = true;
+        [JsonProperty("supportsAuthoring")] public bool SupportsAuthoring = true;
+        [JsonProperty("supportsDryRun")] public bool SupportsDryRun = true;
+        [JsonProperty("supportsTransactionalBatch")] public bool SupportsTransactionalBatch = true;
+        [JsonProperty("supportsMenuItemAllowlist")] public bool SupportsMenuItemAllowlist = true;
+        [JsonProperty("authoringSchemaVersion")] public int AuthoringSchemaVersion = 1;
+        [JsonProperty("policy")] public PolicyDto Policy;
+    }
+
+    internal sealed class PolicyDto
+    {
+        [JsonProperty("profile")] public string Profile;
+        [JsonProperty("allowedEndpointGroups")] public string[] AllowedEndpointGroups;
+        [JsonProperty("deniedEndpointGroups")] public string[] DeniedEndpointGroups;
     }
 
     internal sealed class SceneResponse
@@ -140,6 +156,7 @@ namespace ScenePort.McpBridge.Editor
 
     internal sealed class LogEntryDto
     {
+        [JsonProperty("sequence")] public long Sequence;
         [JsonProperty("type")] public string Type;
         [JsonProperty("utc")] public string Utc;
         [JsonProperty("message")] public string Message;
@@ -150,6 +167,49 @@ namespace ScenePort.McpBridge.Editor
     {
         [JsonProperty("status")] public string Status = "ok";
         [JsonProperty("logs")] public List<LogEntryDto> Logs = new List<LogEntryDto>();
+    }
+
+    internal sealed class PageDto
+    {
+        [JsonProperty("limit")] public int Limit;
+        [JsonProperty("nextCursor", NullValueHandling = NullValueHandling.Ignore)] public string NextCursor;
+        [JsonProperty("truncated")] public bool Truncated;
+    }
+
+    internal sealed class SceneQueryItemDto
+    {
+        [JsonProperty("name")] public string Name;
+        [JsonProperty("path")] public string Path;
+        [JsonProperty("instanceId")] public int InstanceId;
+        [JsonProperty("active")] public bool Active;
+        [JsonProperty("activeInHierarchy")] public bool ActiveInHierarchy;
+        [JsonProperty("tag")] public string Tag;
+        [JsonProperty("layer")] public int Layer;
+        [JsonProperty("scene")] public string Scene;
+        [JsonProperty("depth")] public int Depth;
+        [JsonProperty("childCount")] public int ChildCount;
+        [JsonProperty("components", NullValueHandling = NullValueHandling.Ignore)] public List<ComponentDto> Components;
+        [JsonProperty("transform", NullValueHandling = NullValueHandling.Ignore)] public TransformDto Transform;
+    }
+
+    internal sealed class SceneQueryResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("items")] public List<SceneQueryItemDto> Items = new List<SceneQueryItemDto>();
+        [JsonProperty("page")] public PageDto Page;
+    }
+
+    internal sealed class ComponentQueryItemDto
+    {
+        [JsonProperty("object")] public GameObjectRef Object;
+        [JsonProperty("component")] public ComponentDto Component;
+    }
+
+    internal sealed class ComponentQueryResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("items")] public List<ComponentQueryItemDto> Items = new List<ComponentQueryItemDto>();
+        [JsonProperty("page")] public PageDto Page;
     }
 
     internal sealed class Vector3Dto
@@ -183,6 +243,27 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("type")] public string Type;
         [JsonProperty("editable")] public bool Editable;
         [JsonProperty("value")] public string Value;
+    }
+
+    internal sealed class TypedPropertyDto
+    {
+        [JsonProperty("path")] public string Path;
+        [JsonProperty("displayName")] public string DisplayName;
+        [JsonProperty("propertyType")] public string PropertyType;
+        [JsonProperty("editable")] public bool Editable;
+        [JsonProperty("depth")] public int Depth;
+        [JsonProperty("hasChildren")] public bool HasChildren;
+        [JsonProperty("valueKind")] public string ValueKind;
+        [JsonProperty("value", NullValueHandling = NullValueHandling.Ignore)] public object Value;
+        [JsonProperty("displayValue")] public string DisplayValue;
+    }
+
+    internal sealed class SerializedReadResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("target")] public ObjectRef Target;
+        [JsonProperty("properties")] public List<TypedPropertyDto> Properties = new List<TypedPropertyDto>();
+        [JsonProperty("page")] public PageDto Page;
     }
 
     internal sealed class ComponentDto
@@ -298,6 +379,46 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("note")] public string Note;
     }
 
+    internal sealed class SceneViewResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("available")] public bool Available;
+        [JsonProperty("reason", NullValueHandling = NullValueHandling.Ignore)] public string Reason;
+        [JsonProperty("cameraPosition", NullValueHandling = NullValueHandling.Ignore)] public Vector3Dto CameraPosition;
+        [JsonProperty("cameraRotation", NullValueHandling = NullValueHandling.Ignore)] public Vector3Dto CameraRotation;
+        [JsonProperty("orthographic")] public bool Orthographic;
+        [JsonProperty("size")] public float Size;
+    }
+
+    internal sealed class RuntimeStatusResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("isPlaying")] public bool IsPlaying;
+        [JsonProperty("isPaused")] public bool IsPaused;
+        [JsonProperty("timeScale")] public float TimeScale;
+        [JsonProperty("frameCount")] public int FrameCount;
+        [JsonProperty("timeSinceStartup")] public double TimeSinceStartup;
+    }
+
+    internal sealed class ConsoleEventsResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("entries")] public List<LogEntryDto> Entries = new List<LogEntryDto>();
+        [JsonProperty("oldestAvailableCursor")] public long OldestAvailableCursor;
+        [JsonProperty("nextCursor")] public long NextCursor;
+        [JsonProperty("cursorExpired")] public bool CursorExpired;
+    }
+
+    internal sealed class ProfilerSnapshotResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("totalAllocatedMemory")] public long TotalAllocatedMemory;
+        [JsonProperty("totalReservedMemory")] public long TotalReservedMemory;
+        [JsonProperty("monoUsedSize")] public long MonoUsedSize;
+        [JsonProperty("monoHeapSize")] public long MonoHeapSize;
+        [JsonProperty("frameCount")] public int FrameCount;
+    }
+
     internal sealed class PlayModeResponse
     {
         [JsonProperty("status")] public string Status = "ok";
@@ -324,10 +445,88 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("dependencies")] public List<DependencyDto> Dependencies = new List<DependencyDto>();
     }
 
+    internal sealed class AssetGraphResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("asset")] public AssetDto Asset;
+        [JsonProperty("dependencies")] public List<AssetDto> Dependencies = new List<AssetDto>();
+        [JsonProperty("referencers")] public List<AssetDto> Referencers = new List<AssetDto>();
+        [JsonProperty("truncated")] public bool Truncated;
+    }
+
     internal sealed class TestRunResponse
     {
         [JsonProperty("status")] public string Status = "ok";
         [JsonProperty("run")] public TestRunSummaryDto Run;
+    }
+
+    internal sealed class TestArtifactsResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("runId")] public string RunId;
+        [JsonProperty("directory")] public string Directory;
+        [JsonProperty("summaryPath")] public string SummaryPath;
+        [JsonProperty("consolePath")] public string ConsolePath;
+    }
+
+    internal sealed class AssertionResultDto
+    {
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("passed")] public bool Passed;
+        [JsonProperty("message")] public string Message;
+        [JsonProperty("actual", NullValueHandling = NullValueHandling.Ignore)] public object Actual;
+    }
+
+    internal sealed class AssertionEvaluateResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("passed")] public bool Passed;
+        [JsonProperty("results")] public List<AssertionResultDto> Results = new List<AssertionResultDto>();
+        [JsonProperty("artifactPath")] public string ArtifactPath;
+    }
+
+    internal sealed class MetricsResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("metrics")] public Dictionary<string, object> Metrics = new Dictionary<string, object>();
+        [JsonProperty("artifactPath", NullValueHandling = NullValueHandling.Ignore)] public string ArtifactPath;
+    }
+
+    internal sealed class DiagnosticsResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("health")] public HealthResponse Health;
+        [JsonProperty("capabilities")] public CapabilitiesResponse Capabilities;
+        [JsonProperty("policy")] public PolicyDto Policy;
+        [JsonProperty("auditPath")] public string AuditPath;
+        [JsonProperty("recentAudit")] public List<AuditLogEntryDto> RecentAudit = new List<AuditLogEntryDto>();
+        [JsonProperty("warnings")] public List<string> Warnings = new List<string>();
+    }
+
+    internal sealed class AuthoringChangeDto
+    {
+        [JsonProperty("kind")] public string Kind;
+        [JsonProperty("action")] public string Action;
+        [JsonProperty("path", NullValueHandling = NullValueHandling.Ignore)] public string Path;
+        [JsonProperty("target", NullValueHandling = NullValueHandling.Ignore)] public string Target;
+        [JsonProperty("undoSupported")] public bool UndoSupported;
+        [JsonProperty("rollbackSupported")] public bool RollbackSupported;
+    }
+
+    internal sealed class AuthoringResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("dryRun")] public bool DryRun;
+        [JsonProperty("operation")] public string Operation;
+        [JsonProperty("changes")] public List<AuthoringChangeDto> Changes = new List<AuthoringChangeDto>();
+        [JsonProperty("warnings")] public List<string> Warnings = new List<string>();
+        [JsonProperty("result", NullValueHandling = NullValueHandling.Ignore)] public object Result;
+    }
+
+    internal sealed class MenuItemAllowlistResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("items")] public string[] Items;
     }
 
     internal sealed class AuditLogEntryDto
@@ -339,6 +538,14 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("summary")] public string Summary;
         [JsonProperty("target")] public string Target;
         [JsonProperty("error", NullValueHandling = NullValueHandling.Ignore)] public string Error;
+        [JsonProperty("requestId", NullValueHandling = NullValueHandling.Ignore)] public string RequestId;
+        [JsonProperty("dryRun")] public bool DryRun;
+        [JsonProperty("transactional")] public bool Transactional;
+        [JsonProperty("operation", NullValueHandling = NullValueHandling.Ignore)] public string Operation;
+        [JsonProperty("operationCount")] public int OperationCount;
+        [JsonProperty("undoGroup")] public int UndoGroup;
+        [JsonProperty("paths")] public List<string> Paths = new List<string>();
+        [JsonProperty("rolledBack")] public bool RolledBack;
     }
 
     internal sealed class AuditLogResponse

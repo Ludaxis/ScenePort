@@ -15,7 +15,7 @@ namespace ScenePort.McpBridge.Editor
         [Serializable]
         internal sealed class BridgeInfo
         {
-            public int schemaVersion = 2;
+            public int schemaVersion = 3;
             public string bridge = "sceneport";
             public string bridgeVersion;
             public int protocolVersion;
@@ -34,6 +34,10 @@ namespace ScenePort.McpBridge.Editor
             public string expiresUtc;
             public string ownerLeaseId;
             public string editorRole;
+            public string policyProfile;
+            public string tokenStorage;
+            public string tokenRef;
+            public string tokenFingerprint;
         }
 
         internal static string PathFor(string projectPath)

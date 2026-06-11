@@ -53,13 +53,49 @@
 - Marketplace install guide for local Codex and Claude workflows
 - Malformed JSON and write-surface hardening
 
-## v0.6: Authoring Workflows
+## v0.5.1: Team Readiness Seal
+
+- Release evidence reads protocol/capability values from code
+- Trust-contract script checks public surface and docs
+- README/architecture/security docs stay in sync with capabilities
+- `sceneport doctor --json` supports automation and redaction checks
+
+## v0.6: Legible Proof Loop
+
+- Rich read-only editor perception
+- Typed serialized reads
+- Console event cursor streaming
+- Runtime status/query snapshots
+- Scene view state and screenshot capture
+- Profiler snapshots and asset graph reads
+- Structured tests, assertions, scenarios, golden-frame metadata, perf probes
+- PR/release evidence includes Staged Trust proof artifacts
+
+## v0.7: Team Operations
+
+- Redacted diagnostics endpoint and MCP resource
+- Scoped capability profiles: `read-only`, `team-safe`, `playtest`, `full-safe-local`
+- Policy fields in discovery and `/capabilities`
+- Token status/rotation CLI
+- Codex/Claude config helpers
+- Token-file fallback for CI and credential-store flows
+
+## v0.8: Safe Authoring
 
 - Create script
 - Create material
 - Create prefab
-- Scene view screenshot
+- Transactional/dry-run authoring batch
 - Menu item execution allowlist
+- Assets-only path validation
+- Audit metadata for dry-run, operation count, and authoring paths
+
+## v0.9: Launch Candidate
+
+- Unity 2022.3 / 2023.2 / Unity 6 matrix
+- macOS / Windows / Linux smoke where licensing permits
+- Protocol/schema freeze
+- Governance and rollback playbooks
 
 ## v1.0: Open-Source Launch
 

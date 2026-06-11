@@ -10,6 +10,7 @@ namespace ScenePort.McpBridge.Editor
         private const int MaxEntries = 200;
         private readonly List<AuditLogEntryDto> entries = new List<AuditLogEntryDto>();
         private readonly object gate = new object();
+        private bool loaded;
 
         internal string Path => System.IO.Path.Combine(ScenePortPaths.ScenePortLibraryPath(), "audit.json");
 
@@ -18,6 +19,7 @@ namespace ScenePort.McpBridge.Editor
             limit = Mathf.Clamp(limit, 1, MaxEntries);
             lock (gate)
             {
+                LoadIfNeeded();
                 var start = Math.Max(0, entries.Count - limit);
                 return entries.GetRange(start, entries.Count - start);
             }
@@ -35,10 +37,17 @@ namespace ScenePort.McpBridge.Editor
                 Summary = Summary(endpoint, req),
                 Target = Target(req),
                 Error = error?.Error,
+                RequestId = req.ExtractString("clientRequestId", null),
+                DryRun = req.ExtractBool("dryRun", false),
+                Transactional = req.ExtractBool("transactional", false),
+                Operation = req.ExtractString("op", Operation(endpoint)),
+                OperationCount = OperationCount(req),
+                Paths = Paths(req),
             };
 
             lock (gate)
             {
+                LoadIfNeeded();
                 entries.Add(entry);
                 while (entries.Count > MaxEntries)
                 {
@@ -47,6 +56,87 @@ namespace ScenePort.McpBridge.Editor
             }
 
             Persist();
+        }
+
+        private static string Operation(string endpoint)
+        {
+            switch (endpoint)
+            {
+                case "/create-game-object": return "createGameObject";
+                case "/set-transform": return "setTransform";
+                case "/add-component": return "addComponent";
+                case "/set-serialized-property": return "setSerializedProperty";
+                case "/create-script": return "createScript";
+                case "/create-material": return "createMaterial";
+                case "/create-prefab": return "createPrefab";
+                case "/authoring/batch": return "authoringBatch";
+                case "/authoring/validate": return "authoringValidate";
+                case "/execute-menu-item": return "executeMenuItem";
+                default: return endpoint.TrimStart('/');
+            }
+        }
+
+        private static int OperationCount(ScenePortRequest req)
+        {
+            var operations = req.Body["operations"] as Newtonsoft.Json.Linq.JArray;
+            return operations == null ? 0 : operations.Count;
+        }
+
+        private static List<string> Paths(ScenePortRequest req)
+        {
+            var result = new List<string>();
+            var path = req.ExtractString("path", req.ExtractString("folder", null));
+            if (!string.IsNullOrEmpty(path))
+            {
+                result.Add(path);
+            }
+            var operations = req.Body["operations"] as Newtonsoft.Json.Linq.JArray;
+            if (operations != null)
+            {
+                for (var i = 0; i < operations.Count; i++)
+                {
+                    var op = operations[i] as Newtonsoft.Json.Linq.JObject;
+                    var args = op?["args"] as Newtonsoft.Json.Linq.JObject;
+                    var token = args?["path"] ?? args?["folder"];
+                    if (token != null && token.Type != Newtonsoft.Json.Linq.JTokenType.Null)
+                    {
+                        result.Add(token.ToString());
+                    }
+                }
+            }
+            return result;
+        }
+
+        private void LoadIfNeeded()
+        {
+            if (loaded)
+            {
+                return;
+            }
+            loaded = true;
+
+            try
+            {
+                if (!File.Exists(Path))
+                {
+                    return;
+                }
+                var parsed = Newtonsoft.Json.JsonConvert.DeserializeObject<AuditLogResponse>(File.ReadAllText(Path), ScenePortJson.Settings);
+                if (parsed?.Entries == null)
+                {
+                    return;
+                }
+                entries.Clear();
+                var start = Math.Max(0, parsed.Entries.Count - MaxEntries);
+                for (var i = start; i < parsed.Entries.Count; i++)
+                {
+                    entries.Add(parsed.Entries[i]);
+                }
+            }
+            catch
+            {
+                entries.Clear();
+            }
         }
 
         private void Persist()

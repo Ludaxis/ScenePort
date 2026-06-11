@@ -13045,6 +13045,10 @@ function metadataFor(file, fileMtimeMs) {
     projectId: typeof file.projectId === "string" ? file.projectId : void 0,
     projectName: typeof file.projectName === "string" ? file.projectName : void 0,
     unityVersion: typeof file.unityVersion === "string" ? file.unityVersion : void 0,
+    policyProfile: typeof file.policyProfile === "string" ? file.policyProfile : void 0,
+    tokenStorage: typeof file.tokenStorage === "string" ? file.tokenStorage : void 0,
+    tokenRef: typeof file.tokenRef === "string" ? file.tokenRef : void 0,
+    tokenFingerprint: typeof file.tokenFingerprint === "string" ? file.tokenFingerprint : void 0,
     fileMtimeMs
   };
 }
@@ -13092,6 +13096,19 @@ function walkForProject(start) {
 function unsafeBridgeUrlsAllowed(env) {
   return env.SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL === "1" || env.SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL === "true";
 }
+function explicitToken(env) {
+  if (env.SCENEPORT_TOKEN) {
+    return env.SCENEPORT_TOKEN;
+  }
+  if (env.SCENEPORT_TOKEN_FILE) {
+    try {
+      return readFileSync(env.SCENEPORT_TOKEN_FILE, "utf8").trim();
+    } catch {
+      return void 0;
+    }
+  }
+  return void 0;
+}
 function isLoopbackBridgeUrl(value) {
   try {
     const url = new URL(value);
@@ -13119,7 +13136,7 @@ function urlFromBridgeFile(file) {
   }
   return void 0;
 }
-function targetFromFile(snapshot, source, env, explicitToken) {
+function targetFromFile(snapshot, source, env, explicitToken2) {
   if (!snapshot.file) {
     return null;
   }
@@ -13129,7 +13146,7 @@ function targetFromFile(snapshot, source, env, explicitToken) {
   }
   return {
     baseUrl: fileUrl,
-    token: explicitToken ?? snapshot.file.token,
+    token: explicitToken2 ?? snapshot.file.token,
     projectPath: snapshot.file.projectPath,
     projectId: snapshot.file.projectId,
     source,
@@ -13140,7 +13157,7 @@ function targetFromFile(snapshot, source, env, explicitToken) {
 }
 function discoverBridge(env = process.env, cwd = process.cwd()) {
   const explicitUrl = env.SCENEPORT_UNITY_URL;
-  const explicitToken = env.SCENEPORT_TOKEN;
+  const token = explicitToken(env);
   const projectPathEnv = env.SCENEPORT_PROJECT_PATH;
   let snapshot = null;
   let fileProject = null;
@@ -13161,7 +13178,7 @@ function discoverBridge(env = process.env, cwd = process.cwd()) {
   if (explicitUrl) {
     return {
       baseUrl: normalizeUrl(explicitUrl),
-      token: explicitToken ?? snapshot?.file?.token,
+      token: token ?? snapshot?.file?.token,
       projectPath: snapshot?.file?.projectPath ?? projectPathEnv,
       projectId: snapshot?.file?.projectId,
       source: "env-url",
@@ -13171,12 +13188,7 @@ function discoverBridge(env = process.env, cwd = process.cwd()) {
     };
   }
   if (snapshot) {
-    const target = targetFromFile(
-      snapshot,
-      projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk",
-      env,
-      explicitToken
-    );
+    const target = targetFromFile(snapshot, projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk", env, token);
     if (target) {
       return {
         ...target,
@@ -13186,7 +13198,7 @@ function discoverBridge(env = process.env, cwd = process.cwd()) {
   }
   return {
     baseUrl: DEFAULT_URL,
-    token: explicitToken,
+    token,
     source: "default"
   };
 }
@@ -13514,7 +13526,7 @@ function categoryForStatus(status) {
 }
 
 // src/version.ts
-var VERSION = "0.5.0";
+var VERSION = "0.8.0";
 
 // src/doctor.ts
 function check2(name, status, detail) {
@@ -13540,6 +13552,17 @@ function processIsAlive(pid) {
     const code = typeof error2 === "object" && error2 && "code" in error2 ? String(error2.code) : "";
     return code === "EPERM";
   }
+}
+function redactedDiscovery(discovery) {
+  const { token: _token, ...safe } = discovery;
+  return {
+    ...safe,
+    discovery: discovery.discovery ? {
+      ...discovery.discovery,
+      tokenFingerprint: discovery.discovery.tokenFingerprint,
+      tokenRef: discovery.discovery.tokenRef
+    } : discovery.discovery
+  };
 }
 async function buildDoctorReport(env = process.env, cwd = process.cwd()) {
   const checks = [];
@@ -13660,7 +13683,7 @@ async function buildDoctorReport(env = process.env, cwd = process.cwd()) {
     version: VERSION,
     nodeVersion,
     cwd,
-    discovery,
+    discovery: redactedDiscovery(discovery),
     health,
     checks
   };
@@ -13686,9 +13709,9 @@ function formatDoctorReport(report) {
   );
   return lines.join("\n");
 }
-async function runDoctor(env = process.env, cwd = process.cwd()) {
+async function runDoctor(env = process.env, cwd = process.cwd(), options = {}) {
   const report = await buildDoctorReport(env, cwd);
-  console.log(formatDoctorReport(report));
+  console.log(options.json ? JSON.stringify(report, null, 2) : formatDoctorReport(report));
   return report.status === "error" ? 1 : 0;
 }
 
@@ -22130,6 +22153,15 @@ function createScenePortServer(client) {
       }
     };
   }
+  function toolPost(path, body = {}) {
+    return async (args = {}) => {
+      try {
+        return jsonResult(await client.post(path, { ...body, ...args }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    };
+  }
   function jsonResource(uri, payload) {
     const resourceUri = typeof uri === "string" ? uri : uri.href;
     return {
@@ -22256,7 +22288,8 @@ function createScenePortServer(client) {
       inputSchema: {
         name: external_exports.string().min(1).max(128).describe("Name for the new GameObject."),
         parentPath: external_exports.string().min(1).max(512).optional().describe("Optional hierarchy path for the parent GameObject.")
-      }
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
     async ({ name, parentPath }) => {
       try {
@@ -22295,7 +22328,8 @@ function createScenePortServer(client) {
       inputSchema: {
         ...objectLocatorSchema,
         typeName: external_exports.string().min(1).max(512).describe("Component type name, full type name, or assembly-qualified name.")
-      }
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
     async ({ instanceId, path, typeName }) => {
       try {
@@ -22379,7 +22413,8 @@ function createScenePortServer(client) {
           categoryNames: external_exports.array(external_exports.string().min(1).max(256)).max(50).optional(),
           assemblyNames: external_exports.array(external_exports.string().min(1).max(256)).max(50).optional(),
           runSynchronously: external_exports.boolean().default(false).optional().describe("Only supported for simple EditMode tests.")
-        }
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
       },
       async ({ testNames, groupNames, categoryNames, assemblyNames, runSynchronously }) => {
         try {
@@ -22624,6 +22659,474 @@ function createScenePortServer(client) {
       }
     }
   );
+  server.registerTool(
+    "unity_query_scene",
+    {
+      title: "Query Unity Scene",
+      description: "Run a bounded rich query over the active Unity scene.",
+      inputSchema: {
+        limit: external_exports.number().int().min(1).max(1e3).default(200).optional(),
+        cursor: external_exports.number().int().min(0).optional(),
+        maxDepth: external_exports.number().int().min(0).max(64).default(16).optional(),
+        nameContains: external_exports.string().min(1).max(128).optional(),
+        tag: external_exports.string().min(1).max(64).optional(),
+        componentType: external_exports.string().min(1).max(512).optional(),
+        includeComponents: external_exports.boolean().default(false).optional(),
+        includeTransform: external_exports.boolean().default(true).optional(),
+        propertyLimit: external_exports.number().int().min(0).max(100).default(0).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/scene-query")
+  );
+  server.registerTool(
+    "unity_query_components",
+    {
+      title: "Query Unity Components",
+      description: "Find components in the active scene by type and return bounded inspector snapshots.",
+      inputSchema: {
+        typeName: external_exports.string().min(1).max(512).optional(),
+        limit: external_exports.number().int().min(1).max(1e3).default(200).optional(),
+        cursor: external_exports.number().int().min(0).optional(),
+        propertyLimit: external_exports.number().int().min(0).max(100).default(20).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/component-query")
+  );
+  server.registerTool(
+    "unity_read_serialized_properties",
+    {
+      title: "Read Serialized Properties",
+      description: "Read typed SerializedProperty values for a GameObject or Component without mutation.",
+      inputSchema: {
+        instanceId: external_exports.number().int(),
+        componentType: external_exports.string().min(1).max(512).optional(),
+        componentIndex: external_exports.number().int().min(0).optional(),
+        cursor: external_exports.number().int().min(0).optional(),
+        propertyLimit: external_exports.number().int().min(1).max(500).default(100).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/serialized-read")
+  );
+  server.registerTool(
+    "unity_scene_view_state",
+    {
+      title: "Unity Scene View State",
+      description: "Read the active Scene view camera state when an editor Scene view is available.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolGet("/scene-view")
+  );
+  server.registerTool(
+    "unity_capture_scene_view",
+    {
+      title: "Capture Unity Scene View",
+      description: "Capture the active Unity Scene view camera to a PNG in Temp/ScenePort.",
+      inputSchema: {
+        fileName: external_exports.string().min(1).max(128).optional(),
+        width: external_exports.number().int().min(64).max(4096).default(1024).optional(),
+        height: external_exports.number().int().min(64).max(4096).default(768).optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    toolPost("/capture-scene-view")
+  );
+  server.registerTool(
+    "unity_runtime_status",
+    {
+      title: "Unity Runtime Status",
+      description: "Read current play-mode/runtime status and frame counters.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolGet("/runtime-status")
+  );
+  server.registerTool(
+    "unity_query_runtime",
+    {
+      title: "Query Unity Runtime",
+      description: "Run a bounded runtime object query using the same safe shape as scene query.",
+      inputSchema: {
+        limit: external_exports.number().int().min(1).max(1e3).default(200).optional(),
+        cursor: external_exports.number().int().min(0).optional(),
+        maxDepth: external_exports.number().int().min(0).max(64).default(16).optional(),
+        nameContains: external_exports.string().min(1).max(128).optional(),
+        componentType: external_exports.string().min(1).max(512).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/runtime-query")
+  );
+  server.registerTool(
+    "unity_get_runtime_object",
+    {
+      title: "Get Runtime Object",
+      description: "Read a runtime GameObject snapshot by instance ID or path.",
+      inputSchema: {
+        ...objectLocatorSchema,
+        includeComponents: external_exports.boolean().default(true).optional(),
+        propertyLimit: external_exports.number().int().min(0).max(200).default(40).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ instanceId, path, includeComponents, propertyLimit }) => {
+      try {
+        return jsonResult(await client.get("/runtime-object", { instanceId, path, includeComponents, propertyLimit }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "unity_console_stream",
+    {
+      title: "Unity Console Stream",
+      description: "Read console events after a monotonic cursor.",
+      inputSchema: {
+        cursor: external_exports.number().int().min(0).default(0).optional(),
+        limit: external_exports.number().int().min(1).max(500).default(100).optional(),
+        type: external_exports.enum(["all", "log", "warning", "error", "exception", "assert"]).default("all").optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ cursor, limit, type }) => {
+      try {
+        return jsonResult(await client.get("/console-events", { cursor, limit, type }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "unity_profiler_snapshot",
+    {
+      title: "Unity Profiler Snapshot",
+      description: "Read lightweight Unity memory/frame counters.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolGet("/profiler-snapshot")
+  );
+  server.registerTool(
+    "unity_asset_graph",
+    {
+      title: "Unity Asset Graph",
+      description: "Read dependencies and optional referencers for a Unity asset.",
+      inputSchema: {
+        path: external_exports.string().min(1).max(1024).optional(),
+        guid: external_exports.string().min(1).max(128).optional(),
+        includeReferencers: external_exports.boolean().default(false).optional(),
+        limit: external_exports.number().int().min(1).max(500).default(100).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/asset-graph")
+  );
+  server.registerTool(
+    "unity_tests_run",
+    {
+      title: "Run Unity Tests",
+      description: "Start a Unity EditMode or PlayMode test run.",
+      inputSchema: {
+        mode: external_exports.enum(["editmode", "playmode"]).default("editmode").optional(),
+        testNames: external_exports.array(external_exports.string().min(1).max(512)).max(50).optional(),
+        groupNames: external_exports.array(external_exports.string().min(1).max(512)).max(50).optional(),
+        categoryNames: external_exports.array(external_exports.string().min(1).max(256)).max(50).optional(),
+        assemblyNames: external_exports.array(external_exports.string().min(1).max(256)).max(50).optional(),
+        runSynchronously: external_exports.boolean().default(false).optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    async ({ mode, testNames, groupNames, categoryNames, assemblyNames, runSynchronously }) => {
+      try {
+        return jsonResult(
+          await client.post("/tests/run", {
+            mode,
+            testNames: joinCsv(testNames),
+            groupNames: joinCsv(groupNames),
+            categoryNames: joinCsv(categoryNames),
+            assemblyNames: joinCsv(assemblyNames),
+            runSynchronously
+          })
+        );
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "unity_tests_wait",
+    {
+      title: "Wait For Unity Tests",
+      description: "Read the latest test run status through the proof-loop endpoint.",
+      inputSchema: { mode: external_exports.enum(["editmode", "playmode"]).default("editmode").optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ mode }) => {
+      try {
+        return jsonResult(await client.get("/tests/wait", { mode }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "unity_tests_artifacts",
+    {
+      title: "Unity Test Artifacts",
+      description: "Write/read a machine-readable test artifact pack for the latest Unity test run.",
+      inputSchema: { mode: external_exports.enum(["editmode", "playmode"]).default("editmode").optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ mode }) => {
+      try {
+        return jsonResult(await client.get("/tests/artifacts", { mode }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "unity_assert_state",
+    {
+      title: "Assert Unity State",
+      description: "Evaluate a batch of structured Unity assertions and write assertion evidence.",
+      inputSchema: {
+        checks: external_exports.array(external_exports.record(external_exports.unknown())).max(100).default([]).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/assertions/evaluate")
+  );
+  server.registerTool(
+    "unity_capture_golden_frame",
+    {
+      title: "Capture Golden Frame",
+      description: "Capture a Game view frame as proof evidence.",
+      inputSchema: {
+        baselineId: external_exports.string().min(1).max(128).default("default").optional(),
+        fileName: external_exports.string().min(1).max(128).optional(),
+        superSize: external_exports.number().int().min(1).max(4).default(1).optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    toolPost("/golden-frame/capture")
+  );
+  server.registerTool(
+    "unity_compare_golden_frame",
+    {
+      title: "Compare Golden Frame",
+      description: "Compare two captured frame artifacts with deterministic metadata.",
+      inputSchema: {
+        baselinePath: external_exports.string().min(1).max(2048),
+        actualPath: external_exports.string().min(1).max(2048)
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/golden-frame/compare")
+  );
+  server.registerTool(
+    "unity_run_scenario",
+    {
+      title: "Run Unity Scenario",
+      description: "Run a structured ScenePort scenario harness and write a report.",
+      inputSchema: {
+        name: external_exports.string().min(1).max(128).optional(),
+        steps: external_exports.array(external_exports.record(external_exports.unknown())).max(100).optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    toolPost("/scenario/run")
+  );
+  server.registerTool(
+    "unity_wait_for_scenario",
+    {
+      title: "Wait For Unity Scenario",
+      description: "Read the current scenario status.",
+      inputSchema: { scenarioRunId: external_exports.string().min(1).max(128).optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ scenarioRunId }) => {
+      try {
+        return jsonResult(await client.get("/scenario/wait", { scenarioRunId }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "unity_get_scenario_report",
+    {
+      title: "Get Unity Scenario Report",
+      description: "Read a scenario proof report.",
+      inputSchema: { scenarioRunId: external_exports.string().min(1).max(128).optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ scenarioRunId }) => {
+      try {
+        return jsonResult(await client.get("/scenario/report", { scenarioRunId }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "unity_perf_probe",
+    {
+      title: "Unity Perf Probe",
+      description: "Capture lightweight Unity performance counters to a proof artifact.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/perf/probe")
+  );
+  server.registerTool(
+    "unity_check_perf_budgets",
+    {
+      title: "Check Unity Perf Budgets",
+      description: "Check a single lightweight metric against a budget.",
+      inputSchema: {
+        metric: external_exports.string().min(1).max(128),
+        max: external_exports.number().int()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolPost("/perf/check-budget")
+  );
+  server.registerTool(
+    "unity_diagnostics",
+    {
+      title: "Unity ScenePort Diagnostics",
+      description: "Read redacted bridge diagnostics, policy, capabilities, and recent audit entries.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolGet("/diagnostics")
+  );
+  server.registerTool(
+    "unity_validate_authoring_write",
+    {
+      title: "Validate Authoring Write",
+      description: "Validate a supported authoring write without mutation.",
+      inputSchema: {
+        op: external_exports.string().min(1).max(64).optional(),
+        path: external_exports.string().min(1).max(1024).optional(),
+        dryRun: external_exports.boolean().default(true).optional(),
+        clientRequestId: external_exports.string().min(1).max(128).optional(),
+        reason: external_exports.string().min(1).max(512).optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    toolPost("/authoring/validate", { dryRun: true })
+  );
+  server.registerTool(
+    "unity_authoring_batch",
+    {
+      title: "Unity Authoring Batch",
+      description: "Run a dry-run or transactional batch of supported authoring operations.",
+      inputSchema: {
+        name: external_exports.string().min(1).max(128).optional(),
+        dryRun: external_exports.boolean().default(true).optional(),
+        transactional: external_exports.boolean().default(true).optional(),
+        operations: external_exports.array(
+          external_exports.object({
+            id: external_exports.string().min(1).max(128).optional(),
+            op: external_exports.enum([
+              "createGameObject",
+              "setTransform",
+              "addComponent",
+              "setSerializedProperty",
+              "createScript",
+              "createMaterial",
+              "createPrefab",
+              "executeMenuItem"
+            ]),
+            args: external_exports.record(external_exports.unknown()).default({}).optional()
+          })
+        ).min(1).max(25)
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    toolPost("/authoring/batch")
+  );
+  server.registerTool(
+    "unity_create_script",
+    {
+      title: "Create Unity Script",
+      description: "Create a template-only C# script under Assets/ with safe path validation.",
+      inputSchema: {
+        className: external_exports.string().min(1).max(128),
+        namespace: external_exports.string().min(1).max(256).optional(),
+        folder: external_exports.string().min(1).max(1024).default("Assets").optional(),
+        fileName: external_exports.string().min(1).max(128).optional(),
+        kind: external_exports.enum(["MonoBehaviour", "ScriptableObject", "PlainClass"]).default("MonoBehaviour").optional(),
+        dryRun: external_exports.boolean().default(true).optional(),
+        onConflict: external_exports.enum(["error", "generateUniquePath"]).default("error").optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    toolPost("/create-script")
+  );
+  server.registerTool(
+    "unity_create_material",
+    {
+      title: "Create Unity Material",
+      description: "Create a Material asset under Assets/ with validated shader/color fields.",
+      inputSchema: {
+        path: external_exports.string().min(1).max(1024),
+        shaderName: external_exports.string().min(1).max(256).optional(),
+        color: external_exports.object({ r: external_exports.number(), g: external_exports.number(), b: external_exports.number(), a: external_exports.number().optional() }).optional(),
+        dryRun: external_exports.boolean().default(true).optional(),
+        onConflict: external_exports.enum(["error", "generateUniquePath"]).default("error").optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    toolPost("/create-material")
+  );
+  server.registerTool(
+    "unity_create_prefab",
+    {
+      title: "Create Unity Prefab",
+      description: "Create a Prefab asset from a scene GameObject under Assets/.",
+      inputSchema: {
+        source: external_exports.object({ instanceId: external_exports.number().int().optional(), path: external_exports.string().min(1).max(512).optional() }).optional(),
+        instanceId: external_exports.number().int().optional(),
+        sourcePath: external_exports.string().min(1).max(512).optional(),
+        path: external_exports.string().min(1).max(1024),
+        connectToSource: external_exports.boolean().default(true).optional(),
+        dryRun: external_exports.boolean().default(true).optional(),
+        onConflict: external_exports.enum(["error", "generateUniquePath"]).default("error").optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    toolPost("/create-prefab")
+  );
+  server.registerTool(
+    "unity_menu_item_allowlist",
+    {
+      title: "Unity Menu Item Allowlist",
+      description: "Read the tiny exact-match menu item allowlist.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    toolGet("/menu-item-allowlist")
+  );
+  server.registerTool(
+    "unity_execute_menu_item",
+    {
+      title: "Execute Unity Menu Item",
+      description: "Execute an exact allowlisted Unity menu item.",
+      inputSchema: {
+        path: external_exports.string().min(1).max(256),
+        dryRun: external_exports.boolean().default(true).optional()
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    toolPost("/execute-menu-item")
+  );
   server.registerResource(
     "sceneport-project-status",
     "sceneport://project/status",
@@ -22643,6 +23146,16 @@ function createScenePortServer(client) {
       mimeType: "application/json"
     },
     async (uri) => jsonResource(uri, await client.getCapabilities())
+  );
+  server.registerResource(
+    "sceneport-diagnostics",
+    "sceneport://diagnostics",
+    {
+      title: "ScenePort Diagnostics",
+      description: "Redacted bridge diagnostics, policy, capabilities, and recent audit entries.",
+      mimeType: "application/json"
+    },
+    async (uri) => jsonResource(uri, await client.get("/diagnostics"))
   );
   server.registerResource(
     "sceneport-active-scene",
@@ -22665,6 +23178,20 @@ function createScenePortServer(client) {
     async (uri) => jsonResource(uri, await client.get("/scene-hierarchy", { limit: 500, maxDepth: 12 }))
   );
   server.registerResource(
+    "sceneport-scene-query",
+    new ResourceTemplate("sceneport://scene/query/{preset}", { list: void 0 }),
+    {
+      title: "ScenePort Scene Query",
+      description: "Rich active-scene query preset.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => {
+      const preset = String(variables.preset);
+      const body = preset === "components" ? { includeComponents: true, propertyLimit: 20, limit: 200 } : preset === "all" ? { includeComponents: true, includeTransform: true, propertyLimit: 10, limit: 500 } : { limit: 200 };
+      return jsonResource(uri, await client.post("/scene-query", body));
+    }
+  );
+  server.registerResource(
     "sceneport-object",
     new ResourceTemplate("sceneport://object/{instanceId}", { list: void 0 }),
     {
@@ -22673,6 +23200,26 @@ function createScenePortServer(client) {
       mimeType: "application/json"
     },
     async (uri, variables) => jsonResource(uri, await client.get("/game-object", { instanceId: String(variables.instanceId) }))
+  );
+  server.registerResource(
+    "sceneport-components-type",
+    new ResourceTemplate("sceneport://components/type/{typeName}", { list: void 0 }),
+    {
+      title: "ScenePort Components By Type",
+      description: "Component query by type name.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => jsonResource(uri, await client.post("/component-query", { typeName: String(variables.typeName), limit: 200 }))
+  );
+  server.registerResource(
+    "sceneport-serialized-object",
+    new ResourceTemplate("sceneport://serialized/object/{instanceId}", { list: void 0 }),
+    {
+      title: "ScenePort Serialized Object",
+      description: "Typed serialized properties by instance ID.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => jsonResource(uri, await client.post("/serialized-read", { instanceId: Number(variables.instanceId), propertyLimit: 200 }))
   );
   server.registerResource(
     "sceneport-console-errors",
@@ -22685,6 +23232,16 @@ function createScenePortServer(client) {
     async (uri) => jsonResource(uri, await client.get("/console", { type: "error", limit: 200 }))
   );
   server.registerResource(
+    "sceneport-console-events",
+    new ResourceTemplate("sceneport://console/events/{cursor}", { list: void 0 }),
+    {
+      title: "ScenePort Console Events",
+      description: "Cursor-based Unity console events.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => jsonResource(uri, await client.get("/console-events", { cursor: String(variables.cursor), limit: 200 }))
+  );
+  server.registerResource(
     "sceneport-assets-search",
     new ResourceTemplate("sceneport://assets/search/{query}", { list: void 0 }),
     {
@@ -22693,6 +23250,16 @@ function createScenePortServer(client) {
       mimeType: "application/json"
     },
     async (uri, variables) => jsonResource(uri, await client.get("/asset-search", { query: String(variables.query), limit: 100 }))
+  );
+  server.registerResource(
+    "sceneport-assets-graph",
+    new ResourceTemplate("sceneport://assets/graph/{guid}", { list: void 0 }),
+    {
+      title: "ScenePort Asset Graph",
+      description: "Asset dependency graph by GUID.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => jsonResource(uri, await client.post("/asset-graph", { guid: String(variables.guid), limit: 100 }))
   );
   server.registerResource(
     "sceneport-editmode-tests",
@@ -22745,6 +23312,46 @@ function createScenePortServer(client) {
     async (uri) => jsonResource(uri, await client.get("/playtest/report"))
   );
   server.registerResource(
+    "sceneport-scene-view-state",
+    "sceneport://scene-view/state",
+    {
+      title: "ScenePort Scene View State",
+      description: "Active Unity Scene view camera state.",
+      mimeType: "application/json"
+    },
+    async (uri) => jsonResource(uri, await client.get("/scene-view"))
+  );
+  server.registerResource(
+    "sceneport-runtime-status",
+    "sceneport://runtime/status",
+    {
+      title: "ScenePort Runtime Status",
+      description: "Unity runtime/play-mode status.",
+      mimeType: "application/json"
+    },
+    async (uri) => jsonResource(uri, await client.get("/runtime-status"))
+  );
+  server.registerResource(
+    "sceneport-runtime-object",
+    new ResourceTemplate("sceneport://runtime/object/{instanceId}", { list: void 0 }),
+    {
+      title: "ScenePort Runtime Object",
+      description: "Runtime GameObject snapshot by instance ID.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => jsonResource(uri, await client.get("/runtime-object", { instanceId: String(variables.instanceId) }))
+  );
+  server.registerResource(
+    "sceneport-profiler-snapshot",
+    "sceneport://profiler/snapshot",
+    {
+      title: "ScenePort Profiler Snapshot",
+      description: "Lightweight Unity profiler counters.",
+      mimeType: "application/json"
+    },
+    async (uri) => jsonResource(uri, await client.get("/profiler-snapshot"))
+  );
+  server.registerResource(
     "sceneport-audit-log",
     "sceneport://audit/log",
     {
@@ -22753,6 +23360,16 @@ function createScenePortServer(client) {
       mimeType: "application/json"
     },
     async (uri) => jsonResource(uri, await client.get("/audit-log", { limit: 200 }))
+  );
+  server.registerResource(
+    "sceneport-authoring-menu-items",
+    "sceneport://authoring/menu-items",
+    {
+      title: "ScenePort Authoring Menu Items",
+      description: "Exact-match Unity menu item allowlist.",
+      mimeType: "application/json"
+    },
+    async (uri) => jsonResource(uri, await client.get("/menu-item-allowlist"))
   );
   function registerPrompt(name, title, description, text) {
     server.registerPrompt(
@@ -22832,10 +23449,92 @@ function createScenePortServer(client) {
 }
 
 // src/index.ts
+function printHostConfig(host) {
+  const command = process.argv[1] ?? "sceneport";
+  const config2 = {
+    sceneport: {
+      command: "node",
+      args: [command],
+      env: {
+        SCENEPORT_PROJECT_PATH: "/absolute/path/to/UnityProject"
+      }
+    }
+  };
+  if (host === "claude") {
+    console.log(`claude mcp add-json sceneport '${JSON.stringify(config2.sceneport)}'`);
+    return;
+  }
+  console.log(JSON.stringify(config2, null, 2));
+}
+async function runAuth(command) {
+  if (command === "status") {
+    const client = new UnityBridgeClient();
+    const report = await client.statusReport();
+    const discovery = report.discovery;
+    console.log(
+      JSON.stringify(
+        {
+          status: report.status ?? "ok",
+          tokenConfigured: report.tokenConfigured,
+          tokenRequired: report.tokenRequired,
+          tokenStorage: discovery?.tokenStorage ?? "library",
+          tokenFingerprint: discovery?.tokenFingerprint,
+          discoverySource: report.discoverySource,
+          discoveryFilePath: report.discoveryFilePath
+        },
+        null,
+        2
+      )
+    );
+    return 0;
+  }
+  if (command === "rotate") {
+    const client = new UnityBridgeClient();
+    const result = await client.post("/auth/rotate", {});
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
+  }
+  if (command === "migrate") {
+    console.log(
+      JSON.stringify(
+        { status: "ok", message: "OS credential store migration is optional; current fallback storage remains supported." },
+        null,
+        2
+      )
+    );
+    return 0;
+  }
+  console.error("Usage: sceneport auth status|rotate|migrate");
+  return 1;
+}
 async function main() {
   const command = process.argv[2];
   if (command === "doctor" || command === "--doctor") {
-    process.exitCode = await runDoctor();
+    process.exitCode = await runDoctor(process.env, process.cwd(), { json: process.argv.includes("--json") });
+    return;
+  }
+  if (command === "auth") {
+    process.exitCode = await runAuth(process.argv[3]);
+    return;
+  }
+  if (command === "config") {
+    const host = process.argv[3];
+    if (host === "codex" || host === "claude") {
+      printHostConfig(host);
+      return;
+    }
+    console.error("Usage: sceneport config codex|claude");
+    process.exitCode = 1;
+    return;
+  }
+  if (command === "update-check") {
+    console.log(
+      JSON.stringify(
+        { status: "ok", localVersion: VERSION, source: process.argv.includes("--github") ? "github-unavailable-offline" : "local" },
+        null,
+        2
+      )
+    );
     return;
   }
   const client = new UnityBridgeClient();

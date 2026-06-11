@@ -1,6 +1,6 @@
 {
   "name": "io.sceneport.mcpbridge",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "displayName": "ScenePort MCP Bridge",
   "description": "A safe localhost bridge that exposes Unity Editor state and reversible editor actions to the ScenePort MCP server.",
   "unity": "2022.3",

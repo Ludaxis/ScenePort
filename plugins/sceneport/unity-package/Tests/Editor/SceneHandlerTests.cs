@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -243,6 +244,80 @@ namespace ScenePort.McpBridge.Editor.Tests
 
             var byPath = (GameObjectDetailResponse)SceneQueryHandlers.GameObject(new ScenePortRequest("path=Findable", ""), ctx);
             Assert.AreEqual(go.GetInstanceID(), byPath.Object.InstanceId);
+        }
+
+        [Test]
+        public void SceneQueryFiltersByComponentType()
+        {
+            Probe(out _);
+            new GameObject("Plain");
+
+            var query = (SceneQueryResponse)PerceptionHandlers.SceneQuery(Body("{\"componentType\":\"ScenePortTestProbe\",\"includeComponents\":true}"), ctx);
+            Assert.AreEqual(1, query.Items.Count);
+            Assert.AreEqual("Probe", query.Items[0].Name);
+            Assert.IsNotNull(query.Items[0].Components);
+        }
+
+        [Test]
+        public void SerializedReadReturnsTypedProperties()
+        {
+            var go = Probe(out _);
+            var result = (SerializedReadResponse)PerceptionHandlers.SerializedRead(
+                Body("{\"instanceId\":" + go.GetInstanceID() + ",\"componentType\":\"ScenePortTestProbe\",\"propertyLimit\":20}"),
+                ctx);
+
+            Assert.IsTrue(result.Properties.Exists(item => item.Path == "floatField" && item.ValueKind == "number"));
+        }
+
+        [Test]
+        public void ConsoleEventsUsesCursor()
+        {
+            ctx.Console.Add("one", "", "Log");
+            ctx.Console.Add("two", "", "Warning");
+            var first = (ConsoleEventsResponse)PerceptionHandlers.ConsoleEvents(new ScenePortRequest("cursor=0&limit=1", ""), ctx);
+            var second = (ConsoleEventsResponse)PerceptionHandlers.ConsoleEvents(new ScenePortRequest("cursor=" + first.NextCursor + "&limit=10", ""), ctx);
+
+            Assert.AreEqual(1, first.Entries.Count);
+            Assert.AreEqual("two", second.Entries[0].Message);
+        }
+
+        [Test]
+        public void AuthoringRejectsPathTraversal()
+        {
+            var result = AuthoringHandlers.CreateScript(Body("{\"className\":\"Bad\",\"folder\":\"Assets/../ProjectSettings\",\"dryRun\":true}"), ctx);
+            Assert.IsInstanceOf<ErrorResponse>(result);
+        }
+
+        [Test]
+        public void CreateScriptDryRunDoesNotWriteFile()
+        {
+            var path = Path.Combine(ScenePortPaths.ProjectPath(), "Assets", "ScenePortDryRun.cs");
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+
+            var result = AuthoringHandlers.CreateScript(Body("{\"className\":\"ScenePortDryRun\",\"folder\":\"Assets\",\"dryRun\":true}"), ctx);
+            Assert.IsInstanceOf<AuthoringResponse>(result);
+            Assert.IsFalse(File.Exists(path));
+        }
+
+        [Test]
+        public void AuthoringBatchDryRunDoesNotCallLegacyMutation()
+        {
+            var result = AuthoringHandlers.Batch(
+                Body("{\"dryRun\":true,\"operations\":[{\"op\":\"createGameObject\",\"args\":{\"name\":\"ShouldNotExist\"}}]}"),
+                ctx);
+
+            Assert.IsInstanceOf<AuthoringResponse>(result);
+            Assert.IsNull(GameObject.Find("ShouldNotExist"));
+        }
+
+        [Test]
+        public void MenuItemExecutionRejectsNonAllowlistedPath()
+        {
+            var result = AuthoringHandlers.ExecuteMenuItem(Body("{\"path\":\"Assets/Delete\"}"), ctx);
+            Assert.IsInstanceOf<ErrorResponse>(result);
         }
 
         [Test]

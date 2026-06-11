@@ -20,6 +20,10 @@ export interface DoctorReport {
   checks: DoctorCheck[];
 }
 
+export interface DoctorOptions {
+  json?: boolean;
+}
+
 function check(name: string, status: CheckStatus, detail: string): DoctorCheck {
   return { name, status, detail };
 }
@@ -46,6 +50,20 @@ function processIsAlive(pid: number | undefined): boolean | null {
     const code = typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
     return code === "EPERM";
   }
+}
+
+function redactedDiscovery(discovery: BridgeTarget): BridgeTarget {
+  const { token: _token, ...safe } = discovery;
+  return {
+    ...safe,
+    discovery: discovery.discovery
+      ? {
+          ...discovery.discovery,
+          tokenFingerprint: discovery.discovery.tokenFingerprint,
+          tokenRef: discovery.discovery.tokenRef,
+        }
+      : discovery.discovery,
+  };
 }
 
 export async function buildDoctorReport(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): Promise<DoctorReport> {
@@ -184,7 +202,7 @@ export async function buildDoctorReport(env: NodeJS.ProcessEnv = process.env, cw
     version: VERSION,
     nodeVersion,
     cwd,
-    discovery,
+    discovery: redactedDiscovery(discovery),
     health,
     checks,
   };
@@ -215,8 +233,12 @@ export function formatDoctorReport(report: DoctorReport): string {
   return lines.join("\n");
 }
 
-export async function runDoctor(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): Promise<number> {
+export async function runDoctor(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+  options: DoctorOptions = {},
+): Promise<number> {
   const report = await buildDoctorReport(env, cwd);
-  console.log(formatDoctorReport(report));
+  console.log(options.json ? JSON.stringify(report, null, 2) : formatDoctorReport(report));
   return report.status === "error" ? 1 : 0;
 }

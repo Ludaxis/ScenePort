@@ -21,6 +21,9 @@ namespace ScenePort.McpBridge.Editor
         internal string ProcessName;
         internal bool TokenRequired;
         internal string Token;
+        internal string PolicyProfile = "full-safe-local";
+        internal string TokenStorage = "library";
+        internal string TokenFingerprint;
     }
 
     internal sealed class ScenePortDispatchResult
@@ -43,41 +46,77 @@ namespace ScenePort.McpBridge.Editor
     /// </summary>
     internal sealed class ScenePortRouter
     {
-        private readonly Dictionary<string, Func<ScenePortRequest, ScenePortContext, object>> routes;
+        private readonly Dictionary<string, ScenePortRoute> routes;
         private readonly ScenePortContext context;
 
         internal ScenePortRouter(ScenePortContext context)
         {
             this.context = context;
-            routes = new Dictionary<string, Func<ScenePortRequest, ScenePortContext, object>>(StringComparer.Ordinal)
+            routes = new Dictionary<string, ScenePortRoute>(StringComparer.Ordinal)
             {
-                ["/health"] = EditorStateHandlers.Health,
-                ["/capabilities"] = EditorStateHandlers.Capabilities,
-                ["/scene"] = SceneQueryHandlers.Scene,
-                ["/scene-hierarchy"] = SceneQueryHandlers.Hierarchy,
-                ["/selection"] = SceneQueryHandlers.Selection,
-                ["/console"] = EditorStateHandlers.Console,
-                ["/game-object"] = SceneQueryHandlers.GameObject,
-                ["/components"] = SceneQueryHandlers.Components,
-                ["/create-game-object"] = SceneEditHandlers.CreateGameObject,
-                ["/set-transform"] = SceneEditHandlers.SetTransform,
-                ["/add-component"] = SceneEditHandlers.AddComponent,
-                ["/set-serialized-property"] = SceneEditHandlers.SetSerializedProperty,
-                ["/asset-search"] = AssetHandlers.AssetSearch,
-                ["/compilation-status"] = EditorStateHandlers.CompilationStatus,
-                ["/run-tests"] = TestRunHandlers.RunTests,
-                ["/tests-last"] = TestRunHandlers.TestsLast,
-                ["/capture-game-view"] = EditorStateHandlers.CaptureGameView,
-                ["/play-mode"] = EditorStateHandlers.PlayMode,
-                ["/packages"] = AssetHandlers.Packages,
-                ["/playtest/start"] = PlaytestHandlers.Start,
-                ["/playtest/stop"] = PlaytestHandlers.Stop,
-                ["/playtest/status"] = PlaytestHandlers.Status,
-                ["/playtest/report"] = PlaytestHandlers.Report,
-                ["/playtest/capture-frame"] = PlaytestHandlers.CaptureFrame,
-                ["/playtest/send-key"] = PlaytestHandlers.SendKey,
-                ["/playtest/send-click"] = PlaytestHandlers.SendClick,
-                ["/audit-log"] = EditorStateHandlers.AuditLog,
+                ["/health"] = Route(EditorStateHandlers.Health, "status", false),
+                ["/capabilities"] = Route(EditorStateHandlers.Capabilities, "status", false),
+                ["/diagnostics"] = Route(EditorStateHandlers.Diagnostics, "diagnostics", false),
+                ["/auth/rotate"] = Route(EditorStateHandlers.AuthRotate, "diagnostics", true),
+                ["/scene"] = Route(SceneQueryHandlers.Scene, "scene-query", false),
+                ["/scene-hierarchy"] = Route(SceneQueryHandlers.Hierarchy, "scene-query", false),
+                ["/selection"] = Route(SceneQueryHandlers.Selection, "scene-query", false),
+                ["/console"] = Route(EditorStateHandlers.Console, "console", false),
+                ["/console-events"] = Route(PerceptionHandlers.ConsoleEvents, "console-stream", false),
+                ["/game-object"] = Route(SceneQueryHandlers.GameObject, "scene-query", false),
+                ["/components"] = Route(SceneQueryHandlers.Components, "scene-query", false),
+                ["/scene-query"] = Route(PerceptionHandlers.SceneQuery, "perception", false, "POST"),
+                ["/component-query"] = Route(PerceptionHandlers.ComponentQuery, "perception", false, "POST"),
+                ["/serialized-read"] = Route(PerceptionHandlers.SerializedRead, "typed-serialization", false, "POST"),
+                ["/scene-view"] = Route(PerceptionHandlers.SceneView, "scene-view", false),
+                ["/capture-scene-view"] = Route(PerceptionHandlers.CaptureSceneView, "scene-view", true),
+                ["/runtime-status"] = Route(PerceptionHandlers.RuntimeStatus, "runtime", false),
+                ["/runtime-query"] = Route(PerceptionHandlers.RuntimeQuery, "runtime", false, "POST"),
+                ["/runtime-object"] = Route(PerceptionHandlers.RuntimeObject, "runtime", false),
+                ["/profiler-snapshot"] = Route(PerceptionHandlers.ProfilerSnapshot, "profiler", false),
+                ["/asset-graph"] = Route(PerceptionHandlers.AssetGraph, "asset-graph", false, "POST"),
+                ["/create-game-object"] = Route(SceneEditHandlers.CreateGameObject, "safe-write", true),
+                ["/set-transform"] = Route(SceneEditHandlers.SetTransform, "safe-write", true),
+                ["/add-component"] = Route(SceneEditHandlers.AddComponent, "safe-write", true),
+                ["/set-serialized-property"] = Route(SceneEditHandlers.SetSerializedProperty, "safe-write", true),
+                ["/authoring/validate"] = Route(AuthoringHandlers.Validate, "authoring", true),
+                ["/authoring/batch"] = Route(AuthoringHandlers.Batch, "authoring", true),
+                ["/create-script"] = Route(AuthoringHandlers.CreateScript, "authoring", true),
+                ["/create-material"] = Route(AuthoringHandlers.CreateMaterial, "authoring", true),
+                ["/create-prefab"] = Route(AuthoringHandlers.CreatePrefab, "authoring", true),
+                ["/menu-item-allowlist"] = Route(AuthoringHandlers.MenuItemAllowlist, "authoring", false),
+                ["/execute-menu-item"] = Route(AuthoringHandlers.ExecuteMenuItem, "authoring", true),
+                ["/asset-search"] = Route(AssetHandlers.AssetSearch, "assets", false),
+                ["/compilation-status"] = Route(EditorStateHandlers.CompilationStatus, "status", false),
+                ["/run-tests"] = Route(TestRunHandlers.RunTests, "tests", true),
+                ["/tests-last"] = Route(TestRunHandlers.TestsLast, "tests", false),
+                ["/tests/run"] = Route(ProofHandlers.TestsRun, "proof", true),
+                ["/tests/status"] = Route(ProofHandlers.TestsStatus, "proof", false),
+                ["/tests/wait"] = Route(ProofHandlers.TestsWait, "proof", false),
+                ["/tests/artifacts"] = Route(ProofHandlers.TestsArtifacts, "proof", false),
+                ["/assertions/catalog"] = Route(ProofHandlers.AssertionsCatalog, "proof", false),
+                ["/assertions/evaluate"] = Route(ProofHandlers.AssertionsEvaluate, "proof", false, "POST"),
+                ["/golden-frame/capture"] = Route(ProofHandlers.GoldenCapture, "proof", true),
+                ["/golden-frame/compare"] = Route(ProofHandlers.GoldenCompare, "proof", false, "POST"),
+                ["/golden-frame/approve"] = Route(ProofHandlers.GoldenApprove, "proof", true),
+                ["/scenario/run"] = Route(ProofHandlers.ScenarioRun, "proof", true),
+                ["/scenario/status"] = Route(ProofHandlers.ScenarioStatus, "proof", false),
+                ["/scenario/wait"] = Route(ProofHandlers.ScenarioWait, "proof", false),
+                ["/scenario/report"] = Route(ProofHandlers.ScenarioReport, "proof", false),
+                ["/metrics"] = Route(ProofHandlers.Metrics, "proof", false),
+                ["/perf/probe"] = Route(ProofHandlers.PerfProbe, "proof", false, "POST"),
+                ["/perf/check-budget"] = Route(ProofHandlers.PerfCheckBudget, "proof", false, "POST"),
+                ["/capture-game-view"] = Route(EditorStateHandlers.CaptureGameView, "capture", true),
+                ["/play-mode"] = Route(EditorStateHandlers.PlayMode, "play-mode", true),
+                ["/packages"] = Route(AssetHandlers.Packages, "assets", false),
+                ["/playtest/start"] = Route(PlaytestHandlers.Start, "playtest", true),
+                ["/playtest/stop"] = Route(PlaytestHandlers.Stop, "playtest", true),
+                ["/playtest/status"] = Route(PlaytestHandlers.Status, "playtest", false),
+                ["/playtest/report"] = Route(PlaytestHandlers.Report, "playtest", false),
+                ["/playtest/capture-frame"] = Route(PlaytestHandlers.CaptureFrame, "playtest", true),
+                ["/playtest/send-key"] = Route(PlaytestHandlers.SendKey, "playtest", true),
+                ["/playtest/send-click"] = Route(PlaytestHandlers.SendClick, "playtest", true),
+                ["/audit-log"] = Route(EditorStateHandlers.AuditLog, "audit", false),
             };
         }
 
@@ -98,7 +137,7 @@ namespace ScenePort.McpBridge.Editor
         internal ScenePortDispatchResult DispatchWithStatus(string path, string queryString, string body, string method = "GET")
         {
             var normalized = Normalize(path);
-            if (!routes.TryGetValue(normalized, out var handler))
+            if (!routes.TryGetValue(normalized, out var route))
             {
                 var notFound = new ErrorResponse(
                     "request.unknown_endpoint",
@@ -109,12 +148,47 @@ namespace ScenePort.McpBridge.Editor
             }
 
             var request = new ScenePortRequest(queryString, body);
-            var result = handler(request, context);
-            if (ShouldAudit(method, normalized))
+            if (!route.AllowsMethod(method))
+            {
+                var methodError = new ErrorResponse(
+                    "request.method_not_allowed",
+                    "Endpoint " + normalized + " does not allow " + method + ".",
+                    "request",
+                    false,
+                    null,
+                    "Use one of the endpoint's documented HTTP methods.",
+                    new Dictionary<string, object> { { "endpoint", normalized }, { "allowedMethods", route.Methods } });
+                return new ScenePortDispatchResult(StatusCodeFor(methodError), ScenePortJson.Serialize(methodError));
+            }
+
+            if (!ScenePortPolicy.Allows(context.PolicyProfile, route.Group, route.Mutating))
+            {
+                var denied = new ErrorResponse(
+                    "capability.denied",
+                    "ScenePort policy '" + context.PolicyProfile + "' denies endpoint group '" + route.Group + "'.",
+                    "auth",
+                    false,
+                    null,
+                    "Change the ScenePort policy profile in Unity only if this team should allow that operation.",
+                    new Dictionary<string, object> { { "endpoint", normalized }, { "endpointGroup", route.Group }, { "policyProfile", context.PolicyProfile } });
+                if (route.Mutating)
+                {
+                    context.Audit?.Record(method, normalized, request, denied);
+                }
+                return new ScenePortDispatchResult(StatusCodeFor(denied), ScenePortJson.Serialize(denied));
+            }
+
+            var result = route.Handler(request, context);
+            if (ShouldAudit(method, route))
             {
                 context.Audit?.Record(method, normalized, request, result);
             }
             return new ScenePortDispatchResult(StatusCodeFor(result), ScenePortJson.Serialize(result));
+        }
+
+        private static ScenePortRoute Route(Func<ScenePortRequest, ScenePortContext, object> handler, string group, bool mutating, string methods = null)
+        {
+            return new ScenePortRoute(handler, group, mutating, methods ?? (mutating ? "POST" : "GET"));
         }
 
         private static int StatusCodeFor(object result)
@@ -128,12 +202,15 @@ namespace ScenePort.McpBridge.Editor
             switch (error.Code)
             {
                 case "request.invalid":
+                case "request.method_not_allowed":
                     return 400;
                 case "bridge.unauthorized":
                     return 401;
                 case "request.unknown_endpoint":
                 case "capability.unsupported":
                     return 404;
+                case "capability.denied":
+                    return 403;
                 case "editor.busy.compiling":
                 case "editor.busy.updating":
                 case "editor.playmode.transition":
@@ -144,9 +221,9 @@ namespace ScenePort.McpBridge.Editor
             }
         }
 
-        private static bool ShouldAudit(string method, string path)
+        private static bool ShouldAudit(string method, ScenePortRoute route)
         {
-            return string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase) && path != "/audit-log";
+            return route.Mutating && string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static string Normalize(string path)
@@ -156,19 +233,129 @@ namespace ScenePort.McpBridge.Editor
         }
     }
 
+    internal sealed class ScenePortRoute
+    {
+        internal readonly Func<ScenePortRequest, ScenePortContext, object> Handler;
+        internal readonly string Group;
+        internal readonly bool Mutating;
+        internal readonly string Methods;
+
+        internal ScenePortRoute(Func<ScenePortRequest, ScenePortContext, object> handler, string group, bool mutating, string methods)
+        {
+            Handler = handler;
+            Group = group;
+            Mutating = mutating;
+            Methods = methods ?? "GET";
+        }
+
+        internal bool AllowsMethod(string method)
+        {
+            return Methods.IndexOf(method ?? "GET", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+    }
+
+    internal static class ScenePortPolicy
+    {
+        internal static readonly string[] AllGroups =
+        {
+            "status",
+            "diagnostics",
+            "scene-query",
+            "perception",
+            "typed-serialization",
+            "scene-view",
+            "runtime",
+            "console",
+            "console-stream",
+            "profiler",
+            "assets",
+            "asset-graph",
+            "tests",
+            "proof",
+            "capture",
+            "play-mode",
+            "playtest",
+            "safe-write",
+            "authoring",
+            "audit",
+        };
+
+        internal static bool Allows(string profile, string group, bool mutating)
+        {
+            profile = string.IsNullOrEmpty(profile) ? "full-safe-local" : profile;
+            if (profile == "full-safe-local")
+            {
+                return true;
+            }
+
+            if (profile == "read-only")
+            {
+                return !mutating;
+            }
+
+            if (profile == "team-safe")
+            {
+                return group != "authoring" && group != "safe-write" && group != "play-mode" && group != "playtest";
+            }
+
+            if (profile == "playtest")
+            {
+                return group != "authoring" && group != "safe-write";
+            }
+
+            return !mutating;
+        }
+
+        internal static PolicyDto BuildDto(string profile)
+        {
+            var allowed = new List<string>();
+            var denied = new List<string>();
+            for (var i = 0; i < AllGroups.Length; i++)
+            {
+                var group = AllGroups[i];
+                var mutating = group == "safe-write" || group == "authoring" || group == "play-mode" || group == "playtest" || group == "capture" || group == "tests";
+                if (Allows(profile, group, mutating))
+                {
+                    allowed.Add(group);
+                }
+                else
+                {
+                    denied.Add(group);
+                }
+            }
+
+            return new PolicyDto
+            {
+                Profile = string.IsNullOrEmpty(profile) ? "full-safe-local" : profile,
+                AllowedEndpointGroups = allowed.ToArray(),
+                DeniedEndpointGroups = denied.ToArray(),
+            };
+        }
+    }
+
     internal static class ScenePortProtocol
     {
-        internal const int Version = 1;
-        internal const string CapabilitiesHash = "sceneport-m0-v1";
+        internal const int Version = 3;
+        internal const string CapabilitiesHash = "sceneport-staged-trust-v1";
 
         internal static readonly string[] EndpointGroups =
         {
             "status",
+            "diagnostics",
             "scene-query",
+            "perception",
+            "typed-serialization",
+            "scene-view",
+            "runtime",
             "console",
+            "console-stream",
+            "profiler",
             "safe-write",
+            "authoring",
             "assets",
+            "asset-graph",
             "tests",
+            "proof",
             "capture",
             "play-mode",
             "playtest",

@@ -86,6 +86,9 @@ jobs:
       - name: Check versions are in sync
         run: node scripts/sync-versions.mjs --check
 
+      - name: Check staged trust contract
+        run: node scripts/check-trust-contract.mjs
+
   plugin-shape:
     name: Plugin shape
     runs-on: ubuntu-latest

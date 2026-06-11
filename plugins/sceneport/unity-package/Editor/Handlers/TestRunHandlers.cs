@@ -129,7 +129,10 @@ namespace ScenePort.McpBridge.Editor
             {
                 var current = GetLastTestRunLocked(modeName);
                 current.RunId = runId;
-                current.Status = "running";
+                if (current.Status != "finished")
+                {
+                    current.Status = "running";
+                }
                 snapshot = current.Clone();
             }
 

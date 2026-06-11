@@ -10,8 +10,11 @@ The evidence report must include:
 
 - Tag, commit, server version, Unity package version, protocol version, capabilities hash.
 - CI run link and Unity test project version.
-- Required gates: lint, typecheck, coverage, build freshness, version sync, plugin shape, mandatory Unity EditMode tests.
+- Required gates: lint, typecheck, coverage, build freshness, version sync, staged trust contract, plugin shape, mandatory Unity EditMode tests.
 - Team Readiness Demo proof source and expected artifacts.
+- Diagnostics proof from `sceneport doctor --json` or `unity_diagnostics`.
+- Policy profile, capability hash, and `capability.denied` behavior when scoped policy is tested.
+- Proof-loop artifacts from tests, assertions, golden-frame metadata, scenarios, or perf probes when used.
 - Known risks and rollback notes.
 
 The generated report is intentionally concise so it can be pasted into GitHub release notes and uploaded as a CI artifact.

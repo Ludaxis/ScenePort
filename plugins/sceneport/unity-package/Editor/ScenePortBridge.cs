@@ -22,6 +22,7 @@ namespace ScenePort.McpBridge.Editor
         private const int MainThreadTimeoutSeconds = 30;
         private const double HeartbeatIntervalSeconds = 2;
         private const string AuthDisabledKey = "ScenePort.RequireAuthToken.Disabled";
+        private const string PolicyProfileKey = "ScenePort.PolicyProfile";
 
         private static readonly object QueueLock = new object();
         private static readonly Queue<WorkItem> WorkQueue = new Queue<WorkItem>();
@@ -94,6 +95,9 @@ namespace ScenePort.McpBridge.Editor
             }
 
             Context.TokenRequired = IsAuthRequired();
+            Context.PolicyProfile = ResolvePolicyProfile();
+            Context.TokenStorage = Environment.GetEnvironmentVariable("SCENEPORT_TOKEN") != null ? "env" : "library";
+            Context.TokenFingerprint = ScenePortAuth.Fingerprint(Context.Token);
 
             for (var port = DefaultPort; port <= MaxPort; port++)
             {
@@ -203,7 +207,27 @@ namespace ScenePort.McpBridge.Editor
                 expiresUtc = DateTime.UtcNow.AddSeconds(HeartbeatIntervalSeconds * 4).ToString("o", System.Globalization.CultureInfo.InvariantCulture),
                 ownerLeaseId = OwnerLeaseId,
                 editorRole = Context.EditorRole,
+                policyProfile = Context.PolicyProfile,
+                tokenStorage = Context.TokenStorage,
+                tokenRef = Context.TokenStorage == "env" ? "SCENEPORT_TOKEN" : "Library/ScenePort/bridge.json",
+                tokenFingerprint = Context.TokenFingerprint,
             });
+        }
+
+        private static string ResolvePolicyProfile()
+        {
+            var fromEnv = Environment.GetEnvironmentVariable("SCENEPORT_POLICY_PROFILE");
+            var value = string.IsNullOrEmpty(fromEnv) ? EditorUserSettings.GetConfigValue(PolicyProfileKey) : fromEnv;
+            switch (value)
+            {
+                case "read-only":
+                case "team-safe":
+                case "playtest":
+                case "full-safe-local":
+                    return value;
+                default:
+                    return "full-safe-local";
+            }
         }
 
         private static void OnQuitting()

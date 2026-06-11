@@ -26,7 +26,12 @@ namespace ScenePort.McpBridge.Editor
             if (!string.IsNullOrEmpty(parentPath))
             {
                 var parent = ScenePortObjects.FindByPath(parentPath);
-                if (parent != null)
+                if (parent == null)
+                {
+                    Undo.RevertAllDownToGroup(undoGroup);
+                    return new ErrorResponse("GameObject parent not found: " + parentPath);
+                }
+                else
                 {
                     Undo.SetTransformParent(go.transform, parent.transform, "Parent " + name);
                 }

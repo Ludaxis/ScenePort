@@ -47,6 +47,25 @@ namespace ScenePort.McpBridge.Editor
             return true;
         }
 
+        internal static string Fingerprint(string token)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                return string.Empty;
+            }
+
+            using (var sha = SHA256.Create())
+            {
+                var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(token));
+                var builder = new StringBuilder(16);
+                for (var i = 0; i < 8 && i < hash.Length; i++)
+                {
+                    builder.Append(hash[i].ToString("x2"));
+                }
+                return builder.ToString();
+            }
+        }
+
         /// <summary>Length-independent comparison to avoid leaking match length via timing.</summary>
         internal static bool FixedTimeEquals(string a, string b)
         {

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0
+
+### Staged Trust
+- Added protocol v3 / discovery v3 metadata with policy profile, token storage, token
+  reference, and redacted token fingerprint.
+- Added route-owned method, endpoint group, mutation, policy, and audit metadata.
+- Added scoped capability profiles and `capability.denied` responses.
+- Added rich read-only perception tools for scene query, component query, typed serialized
+  reads, Scene view state/capture, runtime status/query, console cursors, profiler
+  snapshots, and asset graphs.
+- Added proof-loop endpoints and MCP tools for tests, assertions, golden-frame metadata,
+  scenarios, perf probes, and evidence artifact files under `Temp/ScenePort`.
+- Added redacted diagnostics through `/diagnostics`, `sceneport://diagnostics`, and
+  `unity_diagnostics`.
+- Added safe authoring tools for dry-run/transactional batches, script/material/prefab
+  creation, and exact-match menu allowlist execution.
+- Added `sceneport doctor --json`, `sceneport auth status|rotate|migrate`,
+  `sceneport config codex|claude`, `sceneport update-check`, `SCENEPORT_TOKEN_FILE`, and
+  the `scripts/check-trust-contract.mjs` CI gate.
+- Expanded Unity EditMode and MCP Vitest coverage for staged trust routes, policies,
+  annotations, dry-run behavior, and tool/resource contracts.
+
 ## 0.5.0
 
 ### Team Readiness

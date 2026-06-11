@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0
+
+- Added discovery schema v3 with policy profile and redacted token metadata.
+- Added route-owned method/policy/audit classification and scoped capability profiles.
+- Added diagnostics, perception, proof-loop, and safe authoring endpoints.
+- Added dry-run script/material/prefab creation, transactional authoring batch support,
+  and an exact-match menu item allowlist.
+- Added token rotation through Unity so discovery and in-memory auth stay synchronized.
+- Added EditMode coverage for route registry, policy denial, read-only POST auditing,
+  perception, console cursors, and authoring dry-runs.
+
 ## 0.5.0
 
 - Added a bounded local audit log at `Library/ScenePort/audit.json` plus `/audit-log`.

@@ -11,7 +11,7 @@ Tagline: The safe port into the Unity Editor for AI coding agents.
 - Claude Code plugin metadata in `plugins/sceneport/.claude-plugin`
 - Codex plugin metadata in `plugins/sceneport/.codex-plugin`
 - Local marketplace files for Claude and Codex
-- `sceneport doctor` diagnostics, bridge capability readback, and local audit-log readback
+- `sceneport doctor --json` diagnostics, bridge capability readback, policy diagnostics, and local audit-log readback
 - Product, architecture, security, QA, data, and roadmap docs
 
 ## Quick Start
@@ -55,6 +55,7 @@ cd ScenePort
 
    ```bash
    node /absolute/path/to/ScenePort/plugins/sceneport/server/build/index.js doctor
+   node /absolute/path/to/ScenePort/plugins/sceneport/server/build/index.js doctor --json
    ```
 
 4. Connect Claude Code directly from your project. ScenePort discovers the bridge (port
@@ -73,6 +74,17 @@ cd ScenePort
    ```
 
    `SCENEPORT_UNITY_URL` is optional and only needed to pin a specific bridge URL.
+   `SCENEPORT_TOKEN_FILE` can point at a local token file for CI or credential-store flows.
+
+   Useful CLI helpers:
+
+   ```bash
+   sceneport auth status
+   sceneport auth rotate
+   sceneport config codex
+   sceneport config claude
+   sceneport update-check --local
+   ```
 
    **Troubleshooting a 401:** the server and Unity package must both be v0.3+. The token is
    read automatically from `Library/ScenePort/bridge.json`; set `SCENEPORT_PROJECT_PATH` if
@@ -98,6 +110,8 @@ cd ScenePort
    `plugins/sceneport/server`.
 
 ## Tools
+
+Core v0.5 tools:
 
 - `unity_status`
 - `unity_scene_hierarchy`
@@ -126,6 +140,39 @@ cd ScenePort
 - `unity_get_playtest_report`
 - `unity_audit_log`
 
+Staged Trust perception, proof, diagnostics, and safe authoring tools:
+
+- `unity_query_scene`
+- `unity_query_components`
+- `unity_read_serialized_properties`
+- `unity_scene_view_state`
+- `unity_capture_scene_view`
+- `unity_runtime_status`
+- `unity_query_runtime`
+- `unity_get_runtime_object`
+- `unity_console_stream`
+- `unity_profiler_snapshot`
+- `unity_asset_graph`
+- `unity_tests_run`
+- `unity_tests_wait`
+- `unity_tests_artifacts`
+- `unity_assert_state`
+- `unity_capture_golden_frame`
+- `unity_compare_golden_frame`
+- `unity_run_scenario`
+- `unity_wait_for_scenario`
+- `unity_get_scenario_report`
+- `unity_perf_probe`
+- `unity_check_perf_budgets`
+- `unity_diagnostics`
+- `unity_validate_authoring_write`
+- `unity_authoring_batch`
+- `unity_create_script`
+- `unity_create_material`
+- `unity_create_prefab`
+- `unity_menu_item_allowlist`
+- `unity_execute_menu_item`
+
 ## Resources
 
 - `sceneport://project/status`
@@ -141,6 +188,17 @@ cd ScenePort
 - `sceneport://playtest/status`
 - `sceneport://playtest/report`
 - `sceneport://audit/log`
+- `sceneport://diagnostics`
+- `sceneport://scene/query/{preset}`
+- `sceneport://components/type/{typeName}`
+- `sceneport://serialized/object/{instanceId}`
+- `sceneport://console/events/{cursor}`
+- `sceneport://assets/graph/{guid}`
+- `sceneport://scene-view/state`
+- `sceneport://runtime/status`
+- `sceneport://runtime/object/{instanceId}`
+- `sceneport://profiler/snapshot`
+- `sceneport://authoring/menu-items`
 
 ## Prompts
 
@@ -162,6 +220,8 @@ cd ScenePort
 - Keep all network access bound to localhost by default.
 - Reject malformed JSON before it can mutate editor state.
 - Record mutating requests in a bounded local audit log.
+- Enforce scoped capability policy at the bridge; `capability.denied` means the current team profile blocks an endpoint group.
+- Treat authoring as dry-run first, Assets-only, allowlist-only for menu execution, and auditable when it writes.
 - Make arbitrary code execution a future opt-in feature, not a default capability.
 - Ship the MCP server as the shared core, with thin Codex and Claude wrappers.
 
@@ -175,6 +235,10 @@ cd ScenePort
 - [Observability](docs/data/OBSERVABILITY.md)
 - [Team Readiness Demo](docs/demo/TEAM_READINESS_DEMO.md)
 - [Roadmap](docs/roadmap/ROADMAP.md)
+- [Team Adoption Playbook](docs/playbooks/TEAM_ADOPTION.md)
+- [Security Operations Playbook](docs/playbooks/SECURITY_OPERATIONS.md)
+- [CI And Release Playbook](docs/playbooks/CI_RELEASE.md)
+- [Troubleshooting Playbook](docs/playbooks/TROUBLESHOOTING.md)
 
 ## License
 

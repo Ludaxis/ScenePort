@@ -11,6 +11,7 @@ The bridge starts automatically when the editor loads and binds the first free p
 
 The ScenePort MCP server reads that file to connect with zero configuration. Use
 `Tools > ScenePort` to start, stop, copy the URL, or toggle the auth requirement.
+Discovery schema v3 also records policy profile and redacted token metadata.
 
 ## Dependencies
 
@@ -28,6 +29,10 @@ The ScenePort MCP server reads that file to connect with zero configuration. Use
   transform, component, and serialized-property operations.
 - Rejects malformed/non-object JSON request bodies before handlers can mutate editor state.
 - Records mutating requests to a bounded local audit log at `Library/ScenePort/audit.json`.
+- Enforces scoped capability profiles at the bridge and returns `capability.denied` for
+  blocked endpoint groups.
+- Treats safe authoring as Assets-only, dry-run-capable, no-overwrite by default, and
+  menu-allowlist-only.
 - Keeps arbitrary code execution out of the default bridge.
 - Non-finite numbers serialize as `null`.
 
@@ -41,20 +46,57 @@ requests return `401` (missing/invalid token), `403` (Origin/Host/method), `413`
 large), `415` (non-JSON POST). `/health` is the only endpoint exempt from the token.
 
 - `GET /health`
+- `GET /capabilities`
+- `GET /diagnostics`
+- `POST /auth/rotate`
 - `GET /scene`
 - `GET /scene-hierarchy?limit=200&maxDepth=8`
 - `GET /selection`
 - `GET /console?limit=100&type=all`
+- `GET /console-events`
 - `GET /game-object`
 - `GET /components`
+- `POST /scene-query`
+- `POST /component-query`
+- `POST /serialized-read`
+- `GET /scene-view`
+- `POST /capture-scene-view`
+- `GET /runtime-status`
+- `POST /runtime-query`
+- `GET /runtime-object`
+- `GET /profiler-snapshot`
+- `POST /asset-graph`
 - `POST /create-game-object`
 - `POST /set-transform`
 - `POST /add-component`
 - `POST /set-serialized-property`
+- `POST /authoring/validate`
+- `POST /authoring/batch`
+- `POST /create-script`
+- `POST /create-material`
+- `POST /create-prefab`
+- `GET /menu-item-allowlist`
+- `POST /execute-menu-item`
 - `GET /asset-search`
 - `GET /compilation-status`
 - `POST /run-tests`
 - `GET /tests-last`
+- `POST /tests/run`
+- `GET /tests/status`
+- `GET /tests/wait`
+- `GET /tests/artifacts`
+- `GET /assertions/catalog`
+- `POST /assertions/evaluate`
+- `POST /golden-frame/capture`
+- `POST /golden-frame/compare`
+- `POST /golden-frame/approve`
+- `POST /scenario/run`
+- `GET /scenario/status`
+- `GET /scenario/wait`
+- `GET /scenario/report`
+- `GET /metrics`
+- `POST /perf/probe`
+- `POST /perf/check-budget`
 - `POST /capture-game-view`
 - `POST /play-mode`
 - `GET /packages`

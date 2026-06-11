@@ -21,6 +21,10 @@ export interface BridgeDiscoveryMetadata {
   projectId?: string;
   projectName?: string;
   unityVersion?: string;
+  policyProfile?: string;
+  tokenStorage?: string;
+  tokenRef?: string;
+  tokenFingerprint?: string;
   fileMtimeMs?: number;
 }
 
@@ -56,6 +60,10 @@ interface BridgeFile {
   projectId?: string;
   projectName?: string;
   unityVersion?: string;
+  policyProfile?: string;
+  tokenStorage?: string;
+  tokenRef?: string;
+  tokenFingerprint?: string;
 }
 
 interface BridgeFileSnapshot {
@@ -103,6 +111,10 @@ function metadataFor(file: BridgeFile, fileMtimeMs: number): BridgeDiscoveryMeta
     projectId: typeof file.projectId === "string" ? file.projectId : undefined,
     projectName: typeof file.projectName === "string" ? file.projectName : undefined,
     unityVersion: typeof file.unityVersion === "string" ? file.unityVersion : undefined,
+    policyProfile: typeof file.policyProfile === "string" ? file.policyProfile : undefined,
+    tokenStorage: typeof file.tokenStorage === "string" ? file.tokenStorage : undefined,
+    tokenRef: typeof file.tokenRef === "string" ? file.tokenRef : undefined,
+    tokenFingerprint: typeof file.tokenFingerprint === "string" ? file.tokenFingerprint : undefined,
     fileMtimeMs,
   };
 }
@@ -154,6 +166,20 @@ function walkForProject(start: string): string | null {
 
 function unsafeBridgeUrlsAllowed(env: NodeJS.ProcessEnv): boolean {
   return env.SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL === "1" || env.SCENEPORT_ALLOW_UNSAFE_BRIDGE_URL === "true";
+}
+
+function explicitToken(env: NodeJS.ProcessEnv): string | undefined {
+  if (env.SCENEPORT_TOKEN) {
+    return env.SCENEPORT_TOKEN;
+  }
+  if (env.SCENEPORT_TOKEN_FILE) {
+    try {
+      return readFileSync(env.SCENEPORT_TOKEN_FILE, "utf8").trim();
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 export function isLoopbackBridgeUrl(value: string): boolean {
@@ -222,7 +248,7 @@ function targetFromFile(
  */
 export function discoverBridge(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): BridgeTarget {
   const explicitUrl = env.SCENEPORT_UNITY_URL;
-  const explicitToken = env.SCENEPORT_TOKEN;
+  const token = explicitToken(env);
   const projectPathEnv = env.SCENEPORT_PROJECT_PATH;
 
   let snapshot: BridgeFileSnapshot | null = null;
@@ -247,7 +273,7 @@ export function discoverBridge(env: NodeJS.ProcessEnv = process.env, cwd: string
   if (explicitUrl) {
     return {
       baseUrl: normalizeUrl(explicitUrl),
-      token: explicitToken ?? snapshot?.file?.token,
+      token: token ?? snapshot?.file?.token,
       projectPath: snapshot?.file?.projectPath ?? projectPathEnv,
       projectId: snapshot?.file?.projectId,
       source: "env-url",
@@ -258,12 +284,7 @@ export function discoverBridge(env: NodeJS.ProcessEnv = process.env, cwd: string
   }
 
   if (snapshot) {
-    const target = targetFromFile(
-      snapshot,
-      projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk",
-      env,
-      explicitToken,
-    );
+    const target = targetFromFile(snapshot, projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk", env, token);
     if (target) {
       return {
         ...target,
@@ -274,7 +295,7 @@ export function discoverBridge(env: NodeJS.ProcessEnv = process.env, cwd: string
 
   return {
     baseUrl: DEFAULT_URL,
-    token: explicitToken,
+    token,
     source: "default",
   };
 }

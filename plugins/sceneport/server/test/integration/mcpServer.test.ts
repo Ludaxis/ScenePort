@@ -35,6 +35,36 @@ const TOOL_NAMES = [
   "unity_capture_playtest_frame",
   "unity_get_playtest_report",
   "unity_audit_log",
+  "unity_query_scene",
+  "unity_query_components",
+  "unity_read_serialized_properties",
+  "unity_scene_view_state",
+  "unity_capture_scene_view",
+  "unity_runtime_status",
+  "unity_query_runtime",
+  "unity_get_runtime_object",
+  "unity_console_stream",
+  "unity_profiler_snapshot",
+  "unity_asset_graph",
+  "unity_tests_run",
+  "unity_tests_wait",
+  "unity_tests_artifacts",
+  "unity_assert_state",
+  "unity_capture_golden_frame",
+  "unity_compare_golden_frame",
+  "unity_run_scenario",
+  "unity_wait_for_scenario",
+  "unity_get_scenario_report",
+  "unity_perf_probe",
+  "unity_check_perf_budgets",
+  "unity_diagnostics",
+  "unity_validate_authoring_write",
+  "unity_authoring_batch",
+  "unity_create_script",
+  "unity_create_material",
+  "unity_create_prefab",
+  "unity_menu_item_allowlist",
+  "unity_execute_menu_item",
 ];
 
 let bridge: FakeBridge | undefined;
@@ -83,10 +113,16 @@ describe("MCP server tool surface", () => {
       "/playtest/status": () => ({ body: { status: "ok", session: { status: "running" } } }),
       "/playtest/send-key": () => ({ body: { status: "ok" } }),
       "/playtest/send-click": () => ({ body: { status: "ok" } }),
+      "/scene-query": (r) => ({ body: { status: "ok", url: r.url, body: r.body } }),
+      "/serialized-read": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/tests/run": () => ({ body: { status: "ok", run: { mode: "editmode" } } }),
+      "/assertions/evaluate": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/authoring/batch": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/create-script": (r) => ({ body: { status: "ok", body: r.body } }),
     });
   });
 
-  it("lists exactly the 26 expected tools", async () => {
+  it("lists exactly the expected staged-trust tools", async () => {
     const { tools } = await client!.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
   });
@@ -103,6 +139,9 @@ describe("MCP server tool surface", () => {
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
     expect(byName.unity_scene_hierarchy.annotations?.readOnlyHint).toBe(true);
     expect(byName.unity_capture_game_view.annotations?.readOnlyHint).toBe(false);
+    expect(byName.unity_create_game_object.annotations?.readOnlyHint).toBe(false);
+    expect(byName.unity_query_scene.annotations?.readOnlyHint).toBe(true);
+    expect(byName.unity_create_script.annotations?.readOnlyHint).toBe(false);
   });
 
   it("round-trips unity_status through the bridge", async () => {
@@ -135,6 +174,27 @@ describe("MCP server tool surface", () => {
     const hit = bridge!.requests.find((r) => r.url === "/run-tests");
     expect((hit?.body as Record<string, unknown>).testNames).toBe("A,B");
     expect((hit?.body as Record<string, unknown>).mode).toBe("editmode");
+  });
+
+  it("plumbs staged-trust tools to their endpoints", async () => {
+    await client!.callTool({ name: "unity_query_scene", arguments: { limit: 5, componentType: "Camera" } });
+    await client!.callTool({ name: "unity_read_serialized_properties", arguments: { instanceId: 42, propertyLimit: 5 } });
+    await client!.callTool({ name: "unity_tests_run", arguments: { mode: "editmode", testNames: ["Smoke"] } });
+    await client!.callTool({ name: "unity_assert_state", arguments: { checks: [{ type: "health.status" }] } });
+    await client!.callTool({
+      name: "unity_authoring_batch",
+      arguments: { dryRun: true, operations: [{ op: "createGameObject", args: { name: "DryRun" } }] },
+    });
+    await client!.callTool({ name: "unity_create_script", arguments: { className: "ScenePortGenerated", dryRun: true } });
+
+    expect(bridge!.requests.some((r) => r.url === "/scene-query" && (r.body as Record<string, unknown>).componentType === "Camera")).toBe(
+      true,
+    );
+    expect(bridge!.requests.some((r) => r.url === "/serialized-read" && (r.body as Record<string, unknown>).instanceId === 42)).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/tests/run" && (r.body as Record<string, unknown>).testNames === "Smoke")).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/assertions/evaluate")).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/authoring/batch" && (r.body as Record<string, unknown>).dryRun === true)).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/create-script" && (r.body as Record<string, unknown>).dryRun === true)).toBe(true);
   });
 
   it("plumbs playtest commands to the bridge", async () => {
@@ -201,18 +261,29 @@ describe("MCP server resources and prompts", () => {
     await connect({
       "/health": okHealth,
       "/capabilities": () => ({ body: { status: "ok", bridge: "sceneport", protocolVersion: 1, capabilitiesHash: "hash" } }),
+      "/diagnostics": () => ({ body: { status: "ok", policy: { profile: "read-only" } } }),
       "/game-object": (r) => ({ body: { status: "ok", url: r.url } }),
+      "/scene-query": (r) => ({ body: { status: "ok", url: r.url, body: r.body } }),
+      "/component-query": (r) => ({ body: { status: "ok", url: r.url, body: r.body } }),
+      "/serialized-read": (r) => ({ body: { status: "ok", url: r.url, body: r.body } }),
+      "/console-events": (r) => ({ body: { status: "ok", url: r.url } }),
+      "/asset-graph": (r) => ({ body: { status: "ok", url: r.url, body: r.body } }),
+      "/scene-view": () => ({ body: { status: "ok", available: false } }),
+      "/runtime-status": () => ({ body: { status: "ok", isPlaying: false } }),
+      "/runtime-object": (r) => ({ body: { status: "ok", url: r.url } }),
+      "/profiler-snapshot": () => ({ body: { status: "ok", frameCount: 1 } }),
+      "/menu-item-allowlist": () => ({ body: { status: "ok", items: ["Assets/Refresh"] } }),
       "/playtest/status": () => ({ body: { status: "ok", session: { status: "idle" } } }),
       "/playtest/report": () => ({ body: { status: "ok", report: { summary: "idle" } } }),
       "/audit-log": () => ({ body: { status: "ok", entries: [] } }),
     });
   });
 
-  it("lists 11 static resources and 2 templates", async () => {
+  it("lists staged-trust static resources and templates", async () => {
     const resources = await client!.listResources();
-    expect(resources.resources.length).toBe(11);
+    expect(resources.resources.length).toBe(16);
     const templates = await client!.listResourceTemplates();
-    expect(templates.resourceTemplates.length).toBe(2);
+    expect(templates.resourceTemplates.length).toBe(8);
   });
 
   it("reads a static resource as JSON", async () => {
@@ -231,6 +302,13 @@ describe("MCP server resources and prompts", () => {
     await client!.readResource({ uri: "sceneport://object/123" });
     const hit = bridge!.requests.find((r) => r.url.startsWith("/game-object"));
     expect(hit?.url).toContain("instanceId=123");
+  });
+
+  it("reads diagnostics as a redacted JSON resource", async () => {
+    const result = await client!.readResource({ uri: "sceneport://diagnostics" });
+    const payload = JSON.parse((result.contents[0] as { text: string }).text);
+    expect(payload.policy.profile).toBe("read-only");
+    expect(JSON.stringify(payload)).not.toContain("tok");
   });
 
   it("lists 9 prompts that render non-empty text", async () => {

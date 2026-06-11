@@ -27,6 +27,16 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     };
   }
 
+  function toolPost(path: string, body: Record<string, unknown> = {}) {
+    return async (args: Record<string, unknown> = {}) => {
+      try {
+        return jsonResult(await client.post(path, { ...body, ...args }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    };
+  }
+
   function jsonResource(uri: URL | string, payload: unknown) {
     const resourceUri = typeof uri === "string" ? uri : uri.href;
     return {
@@ -163,6 +173,7 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         name: z.string().min(1).max(128).describe("Name for the new GameObject."),
         parentPath: z.string().min(1).max(512).optional().describe("Optional hierarchy path for the parent GameObject."),
       },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ name, parentPath }) => {
       try {
@@ -204,6 +215,7 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         ...objectLocatorSchema,
         typeName: z.string().min(1).max(512).describe("Component type name, full type name, or assembly-qualified name."),
       },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ instanceId, path, typeName }) => {
       try {
@@ -295,6 +307,7 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
           assemblyNames: z.array(z.string().min(1).max(256)).max(50).optional(),
           runSynchronously: z.boolean().default(false).optional().describe("Only supported for simple EditMode tests."),
         },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       },
       async ({ testNames, groupNames, categoryNames, assemblyNames, runSynchronously }) => {
         try {
@@ -559,6 +572,507 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     },
   );
 
+  server.registerTool(
+    "unity_query_scene",
+    {
+      title: "Query Unity Scene",
+      description: "Run a bounded rich query over the active Unity scene.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(1000).default(200).optional(),
+        cursor: z.number().int().min(0).optional(),
+        maxDepth: z.number().int().min(0).max(64).default(16).optional(),
+        nameContains: z.string().min(1).max(128).optional(),
+        tag: z.string().min(1).max(64).optional(),
+        componentType: z.string().min(1).max(512).optional(),
+        includeComponents: z.boolean().default(false).optional(),
+        includeTransform: z.boolean().default(true).optional(),
+        propertyLimit: z.number().int().min(0).max(100).default(0).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/scene-query"),
+  );
+
+  server.registerTool(
+    "unity_query_components",
+    {
+      title: "Query Unity Components",
+      description: "Find components in the active scene by type and return bounded inspector snapshots.",
+      inputSchema: {
+        typeName: z.string().min(1).max(512).optional(),
+        limit: z.number().int().min(1).max(1000).default(200).optional(),
+        cursor: z.number().int().min(0).optional(),
+        propertyLimit: z.number().int().min(0).max(100).default(20).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/component-query"),
+  );
+
+  server.registerTool(
+    "unity_read_serialized_properties",
+    {
+      title: "Read Serialized Properties",
+      description: "Read typed SerializedProperty values for a GameObject or Component without mutation.",
+      inputSchema: {
+        instanceId: z.number().int(),
+        componentType: z.string().min(1).max(512).optional(),
+        componentIndex: z.number().int().min(0).optional(),
+        cursor: z.number().int().min(0).optional(),
+        propertyLimit: z.number().int().min(1).max(500).default(100).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/serialized-read"),
+  );
+
+  server.registerTool(
+    "unity_scene_view_state",
+    {
+      title: "Unity Scene View State",
+      description: "Read the active Scene view camera state when an editor Scene view is available.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolGet("/scene-view"),
+  );
+
+  server.registerTool(
+    "unity_capture_scene_view",
+    {
+      title: "Capture Unity Scene View",
+      description: "Capture the active Unity Scene view camera to a PNG in Temp/ScenePort.",
+      inputSchema: {
+        fileName: z.string().min(1).max(128).optional(),
+        width: z.number().int().min(64).max(4096).default(1024).optional(),
+        height: z.number().int().min(64).max(4096).default(768).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/capture-scene-view"),
+  );
+
+  server.registerTool(
+    "unity_runtime_status",
+    {
+      title: "Unity Runtime Status",
+      description: "Read current play-mode/runtime status and frame counters.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolGet("/runtime-status"),
+  );
+
+  server.registerTool(
+    "unity_query_runtime",
+    {
+      title: "Query Unity Runtime",
+      description: "Run a bounded runtime object query using the same safe shape as scene query.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(1000).default(200).optional(),
+        cursor: z.number().int().min(0).optional(),
+        maxDepth: z.number().int().min(0).max(64).default(16).optional(),
+        nameContains: z.string().min(1).max(128).optional(),
+        componentType: z.string().min(1).max(512).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/runtime-query"),
+  );
+
+  server.registerTool(
+    "unity_get_runtime_object",
+    {
+      title: "Get Runtime Object",
+      description: "Read a runtime GameObject snapshot by instance ID or path.",
+      inputSchema: {
+        ...objectLocatorSchema,
+        includeComponents: z.boolean().default(true).optional(),
+        propertyLimit: z.number().int().min(0).max(200).default(40).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ instanceId, path, includeComponents, propertyLimit }) => {
+      try {
+        return jsonResult(await client.get("/runtime-object", { instanceId, path, includeComponents, propertyLimit }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_console_stream",
+    {
+      title: "Unity Console Stream",
+      description: "Read console events after a monotonic cursor.",
+      inputSchema: {
+        cursor: z.number().int().min(0).default(0).optional(),
+        limit: z.number().int().min(1).max(500).default(100).optional(),
+        type: z.enum(["all", "log", "warning", "error", "exception", "assert"]).default("all").optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ cursor, limit, type }) => {
+      try {
+        return jsonResult(await client.get("/console-events", { cursor, limit, type }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_profiler_snapshot",
+    {
+      title: "Unity Profiler Snapshot",
+      description: "Read lightweight Unity memory/frame counters.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolGet("/profiler-snapshot"),
+  );
+
+  server.registerTool(
+    "unity_asset_graph",
+    {
+      title: "Unity Asset Graph",
+      description: "Read dependencies and optional referencers for a Unity asset.",
+      inputSchema: {
+        path: z.string().min(1).max(1024).optional(),
+        guid: z.string().min(1).max(128).optional(),
+        includeReferencers: z.boolean().default(false).optional(),
+        limit: z.number().int().min(1).max(500).default(100).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/asset-graph"),
+  );
+
+  server.registerTool(
+    "unity_tests_run",
+    {
+      title: "Run Unity Tests",
+      description: "Start a Unity EditMode or PlayMode test run.",
+      inputSchema: {
+        mode: z.enum(["editmode", "playmode"]).default("editmode").optional(),
+        testNames: z.array(z.string().min(1).max(512)).max(50).optional(),
+        groupNames: z.array(z.string().min(1).max(512)).max(50).optional(),
+        categoryNames: z.array(z.string().min(1).max(256)).max(50).optional(),
+        assemblyNames: z.array(z.string().min(1).max(256)).max(50).optional(),
+        runSynchronously: z.boolean().default(false).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ mode, testNames, groupNames, categoryNames, assemblyNames, runSynchronously }) => {
+      try {
+        return jsonResult(
+          await client.post("/tests/run", {
+            mode,
+            testNames: joinCsv(testNames),
+            groupNames: joinCsv(groupNames),
+            categoryNames: joinCsv(categoryNames),
+            assemblyNames: joinCsv(assemblyNames),
+            runSynchronously,
+          }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_tests_wait",
+    {
+      title: "Wait For Unity Tests",
+      description: "Read the latest test run status through the proof-loop endpoint.",
+      inputSchema: { mode: z.enum(["editmode", "playmode"]).default("editmode").optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ mode }) => {
+      try {
+        return jsonResult(await client.get("/tests/wait", { mode }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_tests_artifacts",
+    {
+      title: "Unity Test Artifacts",
+      description: "Write/read a machine-readable test artifact pack for the latest Unity test run.",
+      inputSchema: { mode: z.enum(["editmode", "playmode"]).default("editmode").optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ mode }) => {
+      try {
+        return jsonResult(await client.get("/tests/artifacts", { mode }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_assert_state",
+    {
+      title: "Assert Unity State",
+      description: "Evaluate a batch of structured Unity assertions and write assertion evidence.",
+      inputSchema: {
+        checks: z.array(z.record(z.unknown())).max(100).default([]).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/assertions/evaluate"),
+  );
+
+  server.registerTool(
+    "unity_capture_golden_frame",
+    {
+      title: "Capture Golden Frame",
+      description: "Capture a Game view frame as proof evidence.",
+      inputSchema: {
+        baselineId: z.string().min(1).max(128).default("default").optional(),
+        fileName: z.string().min(1).max(128).optional(),
+        superSize: z.number().int().min(1).max(4).default(1).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/golden-frame/capture"),
+  );
+
+  server.registerTool(
+    "unity_compare_golden_frame",
+    {
+      title: "Compare Golden Frame",
+      description: "Compare two captured frame artifacts with deterministic metadata.",
+      inputSchema: {
+        baselinePath: z.string().min(1).max(2048),
+        actualPath: z.string().min(1).max(2048),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/golden-frame/compare"),
+  );
+
+  server.registerTool(
+    "unity_run_scenario",
+    {
+      title: "Run Unity Scenario",
+      description: "Run a structured ScenePort scenario harness and write a report.",
+      inputSchema: {
+        name: z.string().min(1).max(128).optional(),
+        steps: z.array(z.record(z.unknown())).max(100).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/scenario/run"),
+  );
+
+  server.registerTool(
+    "unity_wait_for_scenario",
+    {
+      title: "Wait For Unity Scenario",
+      description: "Read the current scenario status.",
+      inputSchema: { scenarioRunId: z.string().min(1).max(128).optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ scenarioRunId }) => {
+      try {
+        return jsonResult(await client.get("/scenario/wait", { scenarioRunId }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_get_scenario_report",
+    {
+      title: "Get Unity Scenario Report",
+      description: "Read a scenario proof report.",
+      inputSchema: { scenarioRunId: z.string().min(1).max(128).optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ scenarioRunId }) => {
+      try {
+        return jsonResult(await client.get("/scenario/report", { scenarioRunId }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_perf_probe",
+    {
+      title: "Unity Perf Probe",
+      description: "Capture lightweight Unity performance counters to a proof artifact.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/perf/probe"),
+  );
+
+  server.registerTool(
+    "unity_check_perf_budgets",
+    {
+      title: "Check Unity Perf Budgets",
+      description: "Check a single lightweight metric against a budget.",
+      inputSchema: {
+        metric: z.string().min(1).max(128),
+        max: z.number().int(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolPost("/perf/check-budget"),
+  );
+
+  server.registerTool(
+    "unity_diagnostics",
+    {
+      title: "Unity ScenePort Diagnostics",
+      description: "Read redacted bridge diagnostics, policy, capabilities, and recent audit entries.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolGet("/diagnostics"),
+  );
+
+  server.registerTool(
+    "unity_validate_authoring_write",
+    {
+      title: "Validate Authoring Write",
+      description: "Validate a supported authoring write without mutation.",
+      inputSchema: {
+        op: z.string().min(1).max(64).optional(),
+        path: z.string().min(1).max(1024).optional(),
+        dryRun: z.boolean().default(true).optional(),
+        clientRequestId: z.string().min(1).max(128).optional(),
+        reason: z.string().min(1).max(512).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    toolPost("/authoring/validate", { dryRun: true }),
+  );
+
+  server.registerTool(
+    "unity_authoring_batch",
+    {
+      title: "Unity Authoring Batch",
+      description: "Run a dry-run or transactional batch of supported authoring operations.",
+      inputSchema: {
+        name: z.string().min(1).max(128).optional(),
+        dryRun: z.boolean().default(true).optional(),
+        transactional: z.boolean().default(true).optional(),
+        operations: z
+          .array(
+            z.object({
+              id: z.string().min(1).max(128).optional(),
+              op: z.enum([
+                "createGameObject",
+                "setTransform",
+                "addComponent",
+                "setSerializedProperty",
+                "createScript",
+                "createMaterial",
+                "createPrefab",
+                "executeMenuItem",
+              ]),
+              args: z.record(z.unknown()).default({}).optional(),
+            }),
+          )
+          .min(1)
+          .max(25),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/authoring/batch"),
+  );
+
+  server.registerTool(
+    "unity_create_script",
+    {
+      title: "Create Unity Script",
+      description: "Create a template-only C# script under Assets/ with safe path validation.",
+      inputSchema: {
+        className: z.string().min(1).max(128),
+        namespace: z.string().min(1).max(256).optional(),
+        folder: z.string().min(1).max(1024).default("Assets").optional(),
+        fileName: z.string().min(1).max(128).optional(),
+        kind: z.enum(["MonoBehaviour", "ScriptableObject", "PlainClass"]).default("MonoBehaviour").optional(),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/create-script"),
+  );
+
+  server.registerTool(
+    "unity_create_material",
+    {
+      title: "Create Unity Material",
+      description: "Create a Material asset under Assets/ with validated shader/color fields.",
+      inputSchema: {
+        path: z.string().min(1).max(1024),
+        shaderName: z.string().min(1).max(256).optional(),
+        color: z.object({ r: z.number(), g: z.number(), b: z.number(), a: z.number().optional() }).optional(),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/create-material"),
+  );
+
+  server.registerTool(
+    "unity_create_prefab",
+    {
+      title: "Create Unity Prefab",
+      description: "Create a Prefab asset from a scene GameObject under Assets/.",
+      inputSchema: {
+        source: z.object({ instanceId: z.number().int().optional(), path: z.string().min(1).max(512).optional() }).optional(),
+        instanceId: z.number().int().optional(),
+        sourcePath: z.string().min(1).max(512).optional(),
+        path: z.string().min(1).max(1024),
+        connectToSource: z.boolean().default(true).optional(),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/create-prefab"),
+  );
+
+  server.registerTool(
+    "unity_menu_item_allowlist",
+    {
+      title: "Unity Menu Item Allowlist",
+      description: "Read the tiny exact-match menu item allowlist.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolGet("/menu-item-allowlist"),
+  );
+
+  server.registerTool(
+    "unity_execute_menu_item",
+    {
+      title: "Execute Unity Menu Item",
+      description: "Execute an exact allowlisted Unity menu item.",
+      inputSchema: {
+        path: z.string().min(1).max(256),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/execute-menu-item"),
+  );
+
   server.registerResource(
     "sceneport-project-status",
     "sceneport://project/status",
@@ -579,6 +1093,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       mimeType: "application/json",
     },
     async (uri) => jsonResource(uri, await client.getCapabilities()),
+  );
+
+  server.registerResource(
+    "sceneport-diagnostics",
+    "sceneport://diagnostics",
+    {
+      title: "ScenePort Diagnostics",
+      description: "Redacted bridge diagnostics, policy, capabilities, and recent audit entries.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.get("/diagnostics")),
   );
 
   server.registerResource(
@@ -604,6 +1129,26 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
   );
 
   server.registerResource(
+    "sceneport-scene-query",
+    new ResourceTemplate("sceneport://scene/query/{preset}", { list: undefined }),
+    {
+      title: "ScenePort Scene Query",
+      description: "Rich active-scene query preset.",
+      mimeType: "application/json",
+    },
+    async (uri, variables) => {
+      const preset = String(variables.preset);
+      const body =
+        preset === "components"
+          ? { includeComponents: true, propertyLimit: 20, limit: 200 }
+          : preset === "all"
+            ? { includeComponents: true, includeTransform: true, propertyLimit: 10, limit: 500 }
+            : { limit: 200 };
+      return jsonResource(uri, await client.post("/scene-query", body));
+    },
+  );
+
+  server.registerResource(
     "sceneport-object",
     new ResourceTemplate("sceneport://object/{instanceId}", { list: undefined }),
     {
@@ -612,6 +1157,30 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       mimeType: "application/json",
     },
     async (uri, variables) => jsonResource(uri, await client.get("/game-object", { instanceId: String(variables.instanceId) })),
+  );
+
+  server.registerResource(
+    "sceneport-components-type",
+    new ResourceTemplate("sceneport://components/type/{typeName}", { list: undefined }),
+    {
+      title: "ScenePort Components By Type",
+      description: "Component query by type name.",
+      mimeType: "application/json",
+    },
+    async (uri, variables) =>
+      jsonResource(uri, await client.post("/component-query", { typeName: String(variables.typeName), limit: 200 })),
+  );
+
+  server.registerResource(
+    "sceneport-serialized-object",
+    new ResourceTemplate("sceneport://serialized/object/{instanceId}", { list: undefined }),
+    {
+      title: "ScenePort Serialized Object",
+      description: "Typed serialized properties by instance ID.",
+      mimeType: "application/json",
+    },
+    async (uri, variables) =>
+      jsonResource(uri, await client.post("/serialized-read", { instanceId: Number(variables.instanceId), propertyLimit: 200 })),
   );
 
   server.registerResource(
@@ -626,6 +1195,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
   );
 
   server.registerResource(
+    "sceneport-console-events",
+    new ResourceTemplate("sceneport://console/events/{cursor}", { list: undefined }),
+    {
+      title: "ScenePort Console Events",
+      description: "Cursor-based Unity console events.",
+      mimeType: "application/json",
+    },
+    async (uri, variables) => jsonResource(uri, await client.get("/console-events", { cursor: String(variables.cursor), limit: 200 })),
+  );
+
+  server.registerResource(
     "sceneport-assets-search",
     new ResourceTemplate("sceneport://assets/search/{query}", { list: undefined }),
     {
@@ -634,6 +1214,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       mimeType: "application/json",
     },
     async (uri, variables) => jsonResource(uri, await client.get("/asset-search", { query: String(variables.query), limit: 100 })),
+  );
+
+  server.registerResource(
+    "sceneport-assets-graph",
+    new ResourceTemplate("sceneport://assets/graph/{guid}", { list: undefined }),
+    {
+      title: "ScenePort Asset Graph",
+      description: "Asset dependency graph by GUID.",
+      mimeType: "application/json",
+    },
+    async (uri, variables) => jsonResource(uri, await client.post("/asset-graph", { guid: String(variables.guid), limit: 100 })),
   );
 
   server.registerResource(
@@ -692,6 +1283,50 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
   );
 
   server.registerResource(
+    "sceneport-scene-view-state",
+    "sceneport://scene-view/state",
+    {
+      title: "ScenePort Scene View State",
+      description: "Active Unity Scene view camera state.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.get("/scene-view")),
+  );
+
+  server.registerResource(
+    "sceneport-runtime-status",
+    "sceneport://runtime/status",
+    {
+      title: "ScenePort Runtime Status",
+      description: "Unity runtime/play-mode status.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.get("/runtime-status")),
+  );
+
+  server.registerResource(
+    "sceneport-runtime-object",
+    new ResourceTemplate("sceneport://runtime/object/{instanceId}", { list: undefined }),
+    {
+      title: "ScenePort Runtime Object",
+      description: "Runtime GameObject snapshot by instance ID.",
+      mimeType: "application/json",
+    },
+    async (uri, variables) => jsonResource(uri, await client.get("/runtime-object", { instanceId: String(variables.instanceId) })),
+  );
+
+  server.registerResource(
+    "sceneport-profiler-snapshot",
+    "sceneport://profiler/snapshot",
+    {
+      title: "ScenePort Profiler Snapshot",
+      description: "Lightweight Unity profiler counters.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.get("/profiler-snapshot")),
+  );
+
+  server.registerResource(
     "sceneport-audit-log",
     "sceneport://audit/log",
     {
@@ -700,6 +1335,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       mimeType: "application/json",
     },
     async (uri) => jsonResource(uri, await client.get("/audit-log", { limit: 200 })),
+  );
+
+  server.registerResource(
+    "sceneport-authoring-menu-items",
+    "sceneport://authoring/menu-items",
+    {
+      title: "ScenePort Authoring Menu Items",
+      description: "Exact-match Unity menu item allowlist.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.get("/menu-item-allowlist")),
   );
 
   function registerPrompt(name: string, title: string, description: string, text: string) {

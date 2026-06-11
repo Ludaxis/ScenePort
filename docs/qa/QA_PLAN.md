@@ -32,15 +32,22 @@ Unity EditMode:
 - Bridge starts and stops.
 - Health endpoint schema.
 - Capabilities endpoint schema.
-- Discovery v2 owner lease, heartbeat, owner-safe delete, and v1 token compatibility.
+- Discovery v3 owner lease, heartbeat, policy/token metadata, owner-safe delete, and v1/v2 compatibility.
 - AssetImportWorker process classification never hosts the bridge.
 - Scene hierarchy reads active scene.
+- Staged Trust route registry covers methods, endpoint groups, policy denial, and mutating audit behavior.
+- Read-only POST endpoints such as `/scene-query` are not logged as writes.
+- Perception endpoints cover scene query, component query, typed serialized reads, console cursors, profiler snapshot, and asset graph no-throw behavior.
 - Selection endpoint reports selected GameObjects.
 - Console ring buffer stores bounded log entries.
 - Create GameObject registers Undo.
 - Set transform registers Undo.
 - Malformed JSON POSTs return `400` and do not mutate.
 - Mutating requests are recorded in the local audit log.
+- Denied mutating requests are recorded in the local audit log.
+- Authoring dry-runs create no files or objects.
+- Authoring validators reject traversal, absolute paths, blocked folders, bad script identifiers, unknown menu items, and silent overwrites.
+- Proof endpoints write assertion/test/perf/scenario artifacts under `Temp/ScenePort`.
 - Serialized-property writes reject internal/non-editable/non-scene targets.
 - 1,000-request health stress does not hang the editor bridge.
 
@@ -51,6 +58,11 @@ MCP Server:
 - Tool schemas reject invalid input.
 - Tool outputs are valid JSON text.
 - Large outputs remain bounded.
+- Every tool has trust annotations.
+- Staged Trust tools route to expected Unity endpoints.
+- `sceneport doctor --json` redacts tokens.
+- `sceneport auth status|rotate|migrate`, `sceneport config codex|claude`, and `sceneport update-check --local` return deterministic output.
+- `node scripts/check-trust-contract.mjs` passes.
 
 End-to-End:
 
@@ -70,7 +82,7 @@ First-run smoke:
 2. Add package from disk in Unity.
 3. Run `curl http://127.0.0.1:38987/health`.
 4. Build server with `npm install && npm run build`.
-5. Run `sceneport doctor` or `node <ScenePort>/plugins/sceneport/server/build/index.js doctor`.
+5. Run `sceneport doctor --json` or `node <ScenePort>/plugins/sceneport/server/build/index.js doctor --json`.
 6. Run `SCENEPORT_PROJECT_PATH=<project> npm run smoke:team-readiness` from
    `plugins/sceneport/server`.
 7. Connect Claude Code or Codex.
@@ -85,6 +97,15 @@ Team-readiness smoke:
    all return useful results.
 5. Confirm `Temp/ScenePort/team-readiness-smoke.json` or equivalent CI artifact is attached
    to release evidence when the smoke runner is used.
+
+Staged Trust smoke:
+
+1. Run `unity_diagnostics` and confirm policy, protocol, capabilities, and audit path are present with no token.
+2. Run `unity_query_scene`, `unity_read_serialized_properties`, `unity_console_stream`, and `unity_profiler_snapshot`.
+3. Run `unity_assert_state` with `health.status` and `console.errorCount`.
+4. Run `unity_create_script` with `dryRun: true`; confirm no file appears under `Assets/`.
+5. Switch policy to `read-only` and confirm `unity_authoring_batch` receives `capability.denied`.
+6. Rotate the token with `sceneport auth rotate`, then confirm the MCP server rediscovery path reconnects.
 
 Regression smoke:
 
@@ -120,6 +141,7 @@ vitest suite (identity guard), but should be spot-checked manually before a rele
 - All JSON manifests validate.
 - Auth token required on all endpoints except `/health`.
 - `npm test` and the EditMode suite pass; versions in sync; committed bundle is fresh.
+- Staged Trust contract check passes.
 - Pull requests and tagged releases must run Unity EditMode tests with `UNITY_LICENSE`;
   skipping is not allowed.
 - Releases must generate `RELEASE_EVIDENCE.md` with test gates, versions, demo evidence

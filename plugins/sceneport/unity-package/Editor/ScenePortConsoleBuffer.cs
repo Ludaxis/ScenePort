@@ -15,6 +15,7 @@ namespace ScenePort.McpBridge.Editor
         private readonly int capacity;
         private readonly object gate = new object();
         private readonly Queue<LogEntryDto> entries;
+        private long nextSequence = 1;
 
         internal ScenePortConsoleBuffer(int capacity = 500)
         {
@@ -26,6 +27,7 @@ namespace ScenePort.McpBridge.Editor
         {
             var entry = new LogEntryDto
             {
+                Sequence = nextSequence++,
                 Message = message ?? string.Empty,
                 StackTrace = stackTrace ?? string.Empty,
                 Type = type ?? string.Empty,
@@ -99,6 +101,39 @@ namespace ScenePort.McpBridge.Editor
             }
 
             return result;
+        }
+
+        internal ConsoleEventsResponse EventsAfter(long cursor, int limit, string type)
+        {
+            limit = Mathf.Clamp(limit, 1, capacity);
+            var typeFilter = (type ?? "all").ToLowerInvariant();
+            var response = new ConsoleEventsResponse();
+
+            lock (gate)
+            {
+                var array = entries.ToArray();
+                response.OldestAvailableCursor = array.Length == 0 ? Math.Max(0, nextSequence - 1) : array[0].Sequence;
+                response.CursorExpired = array.Length > 0 && cursor > 0 && cursor < response.OldestAvailableCursor - 1;
+
+                for (var i = 0; i < array.Length && response.Entries.Count < limit; i++)
+                {
+                    var entry = array[i];
+                    if (entry.Sequence <= cursor)
+                    {
+                        continue;
+                    }
+                    if (typeFilter != "all" && !string.Equals(typeFilter, entry.Type.ToLowerInvariant(), StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    response.Entries.Add(entry);
+                }
+
+                response.NextCursor = response.Entries.Count == 0 ? Math.Max(cursor, nextSequence - 1) : response.Entries[response.Entries.Count - 1].Sequence;
+            }
+
+            return response;
         }
     }
 }

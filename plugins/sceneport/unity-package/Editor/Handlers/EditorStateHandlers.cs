@@ -44,7 +44,72 @@ namespace ScenePort.McpBridge.Editor
                 BridgeVersion = ctx.Version,
                 CapabilitiesHash = ctx.CapabilitiesHash,
                 EndpointGroups = ScenePortProtocol.EndpointGroups,
+                Policy = ScenePortPolicy.BuildDto(ctx.PolicyProfile),
             };
+        }
+
+        internal static object Diagnostics(ScenePortRequest req, ScenePortContext ctx)
+        {
+            var health = (HealthResponse)Health(req, ctx);
+            var capabilities = (CapabilitiesResponse)Capabilities(req, ctx);
+            var response = new DiagnosticsResponse
+            {
+                Health = health,
+                Capabilities = capabilities,
+                Policy = capabilities.Policy,
+                AuditPath = ctx.Audit?.Path,
+                RecentAudit = ctx.Audit?.Snapshot(25) ?? new System.Collections.Generic.List<AuditLogEntryDto>(),
+            };
+
+            if (!ctx.TokenRequired)
+            {
+                response.Warnings.Add("Auth token requirement is disabled.");
+            }
+            if (ctx.PolicyProfile == "full-safe-local")
+            {
+                response.Warnings.Add("Policy profile allows safe writes and authoring tools.");
+            }
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                response.Warnings.Add("Unity is compiling or updating assets.");
+            }
+
+            return response;
+        }
+
+        internal static object AuthRotate(ScenePortRequest req, ScenePortContext ctx)
+        {
+            ctx.Token = ScenePortAuth.GenerateToken();
+            ctx.TokenRequired = true;
+            ctx.TokenStorage = "library";
+            ctx.TokenFingerprint = ScenePortAuth.Fingerprint(ctx.Token);
+            var projectPath = ScenePortPaths.ProjectPath();
+            ScenePortDiscoveryFile.Write(projectPath, new ScenePortDiscoveryFile.BridgeInfo
+            {
+                bridgeVersion = ctx.Version,
+                protocolVersion = ctx.ProtocolVersion,
+                capabilitiesHash = ctx.CapabilitiesHash,
+                url = "http://127.0.0.1:" + ctx.BoundPort,
+                port = ctx.BoundPort,
+                token = ctx.Token,
+                projectPath = projectPath,
+                projectId = PlayerSettings.productGUID.ToString("N"),
+                projectName = Application.productName,
+                unityVersion = Application.unityVersion,
+                processId = System.Diagnostics.Process.GetCurrentProcess().Id,
+                processName = ctx.ProcessName,
+                startedUtc = ctx.StartedUtc,
+                heartbeatUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                expiresUtc = DateTime.UtcNow.AddSeconds(8).ToString("o", CultureInfo.InvariantCulture),
+                ownerLeaseId = ctx.OwnerLeaseId,
+                editorRole = ctx.EditorRole,
+                policyProfile = ctx.PolicyProfile,
+                tokenStorage = ctx.TokenStorage,
+                tokenRef = "Library/ScenePort/bridge.json",
+                tokenFingerprint = ctx.TokenFingerprint,
+            });
+
+            return new { status = "ok", tokenStorage = ctx.TokenStorage, tokenFingerprint = ctx.TokenFingerprint };
         }
 
         internal static object Console(ScenePortRequest req, ScenePortContext ctx)

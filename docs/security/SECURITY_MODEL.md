@@ -10,7 +10,7 @@ The trust boundary is the local OS user. Anything that can read `Library/` can a
 modify `Assets/`, so the token at rest there is not a secret from local code — it exists
 to stop *remote* and *browser* callers, which cannot read local files.
 
-## Defaults (implemented in v0.5)
+## Defaults
 
 - The Unity bridge binds to `127.0.0.1` only, on the first free port in 38987–38996.
 - Every endpoint except `/health` requires the `X-ScenePort-Token` header (constant-time
@@ -26,6 +26,13 @@ to stop *remote* and *browser* callers, which cannot read local files.
   properties, and non-scene object targets.
 - Mutating requests are recorded to a bounded local audit log in
   `Library/ScenePort/audit.json`.
+- Route metadata defines each endpoint's allowed HTTP methods, endpoint group, mutation
+  status, and audit behavior. Read-only POST endpoints are allowed only when explicitly
+  declared and are not treated as mutations.
+- Scoped capability profiles enforce team policy at the bridge: `read-only`, `team-safe`,
+  `playtest`, and `full-safe-local`. Denied requests return `capability.denied`.
+- Discovery schema v3 includes redacted token metadata (`tokenStorage`, `tokenRef`,
+  `tokenFingerprint`) and the active policy profile.
 - Tool output is local; ScenePort does not send it to third-party services.
 
 ## Threats and how they are addressed
@@ -57,12 +64,17 @@ defaulted write values.
 
 Arbitrary Code Execution:
 
-Dynamic C# execution is useful for power users but dangerous. It remains a future explicit dev-mode feature with a visible warning, separate enablement, and audit logs.
+Dynamic C# execution is useful for power users but dangerous. ScenePort does not expose arbitrary C# source execution. Script authoring creates template-only files under `Assets/` and remains audited.
+
+Policy Bypass:
+
+MCP annotations are advisory. The Unity bridge is the source of enforcement. Even if a host lists a tool, the bridge rejects denied endpoint groups with `capability.denied`.
 
 ## Residual Risks
 
 - `/health` is unauthenticated by design (reachability handshake and `curl` debugging), so it exposes the project path and name to any local process. No tokens or mutating actions are reachable without the token.
 - The token at rest is readable by any process running as the same OS user; the design goal is to exclude remote/browser callers, not other local same-user processes.
+- `SCENEPORT_TOKEN_FILE` and future OS credential-store flows reduce accidental env/log exposure but do not change the same-OS-user trust boundary.
 - A cloud-synced `Library/` folder would sync the token; keep `Library/` out of sync tools (the standard Unity `.gitignore` already excludes it).
 - The audit log intentionally stores local object paths, property paths, and action summaries.
   Keep `Library/` local-only.
@@ -82,6 +94,17 @@ Write tools:
 - Must return a clear summary of changed objects.
 - Must be covered by QA tests.
 - Must record mutating requests in the local audit log.
+- Must reject `GET` and require JSON `POST`.
+
+Authoring tools:
+
+- Must write only under `Assets/`.
+- Must reject absolute paths, traversal, `Library/`, `ProjectSettings/`, `Packages/`,
+  `UserSettings/`, and `Temp/`.
+- Must default to dry-run in MCP schemas when practical.
+- Must not overwrite assets unless the caller chooses `onConflict: "generateUniquePath"`.
+- Must not accept arbitrary script source.
+- Must execute only exact-match allowlisted menu items.
 
 Destructive tools:
 

@@ -50,6 +50,13 @@ namespace ScenePort.McpBridge.Editor
                 ["/capture-game-view"] = EditorStateHandlers.CaptureGameView,
                 ["/play-mode"] = EditorStateHandlers.PlayMode,
                 ["/packages"] = AssetHandlers.Packages,
+                ["/playtest/start"] = PlaytestHandlers.Start,
+                ["/playtest/stop"] = PlaytestHandlers.Stop,
+                ["/playtest/status"] = PlaytestHandlers.Status,
+                ["/playtest/report"] = PlaytestHandlers.Report,
+                ["/playtest/capture-frame"] = PlaytestHandlers.CaptureFrame,
+                ["/playtest/send-key"] = PlaytestHandlers.SendKey,
+                ["/playtest/send-click"] = PlaytestHandlers.SendClick,
             };
         }
 

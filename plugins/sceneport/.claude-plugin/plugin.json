@@ -1,7 +1,7 @@
 {
   "name": "sceneport",
   "description": "Safe Unity Editor MCP bridge for Claude Code, Codex, and other MCP clients.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": {
     "name": "ScenePort Maintainers"
   },

@@ -86,6 +86,12 @@ namespace ScenePort.McpBridge.Editor
                 fileName = "game-view-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".png";
             }
 
+            return CaptureGameViewFile(fileName, superSize);
+        }
+
+        internal static CaptureGameViewResponse CaptureGameViewFile(string fileName, int superSize)
+        {
+            superSize = Mathf.Clamp(superSize, 1, 4);
             fileName = ScenePortPaths.SanitizeFileName(fileName);
             if (!fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
             {

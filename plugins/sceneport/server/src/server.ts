@@ -40,6 +40,10 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     };
   }
 
+  function sleep(milliseconds: number) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
+
   server.registerTool(
     "unity_status",
     {
@@ -369,6 +373,173 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     },
   );
 
+  server.registerTool(
+    "unity_start_playtest",
+    {
+      title: "Start Unity Playtest",
+      description: "Start a ScenePort playtest session and optionally request Unity play mode plus an initial Game view capture.",
+      inputSchema: {
+        label: z.string().min(1).max(128).default("ScenePort Playtest").optional(),
+        enterPlayMode: z.boolean().default(true).optional(),
+        captureInitialFrame: z.boolean().default(false).optional(),
+        superSize: z.number().int().min(1).max(4).default(1).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ label, enterPlayMode, captureInitialFrame, superSize }) => {
+      try {
+        return jsonResult(await client.post("/playtest/start", { label, enterPlayMode, captureInitialFrame, superSize }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_stop_playtest",
+    {
+      title: "Stop Unity Playtest",
+      description: "Stop the current ScenePort playtest session, optionally exit play mode, and return the playtest report.",
+      inputSchema: {
+        exitPlayMode: z.boolean().default(true).optional(),
+        captureFinalFrame: z.boolean().default(false).optional(),
+        superSize: z.number().int().min(1).max(4).default(1).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ exitPlayMode, captureFinalFrame, superSize }) => {
+      try {
+        return jsonResult(await client.post("/playtest/stop", { exitPlayMode, captureFinalFrame, superSize }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_playtest_status",
+    {
+      title: "Unity Playtest Status",
+      description: "Read the active ScenePort playtest session status.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolGet("/playtest/status"),
+  );
+
+  server.registerTool(
+    "unity_wait",
+    {
+      title: "Wait During Unity Playtest",
+      description: "Wait without blocking the Unity Editor main thread, then optionally read playtest status.",
+      inputSchema: {
+        milliseconds: z.number().int().min(0).max(60000).default(1000).optional(),
+        pollStatus: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ milliseconds, pollStatus }) => {
+      try {
+        const waitedMilliseconds = milliseconds ?? 1000;
+        await sleep(waitedMilliseconds);
+        const payload: Record<string, unknown> = {
+          status: "ok",
+          waitedMilliseconds,
+        };
+        if (pollStatus !== false) {
+          payload.playtest = await client.get("/playtest/status");
+        }
+        return jsonResult(payload);
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_send_key",
+    {
+      title: "Send Key To Unity Game View",
+      description: "Send a key event to the focused Unity Game view and record it in the active playtest session.",
+      inputSchema: {
+        key: z.string().min(1).max(64).describe("Unity KeyCode name, single letter/digit, or Space."),
+        eventType: z.enum(["press", "down", "up"]).default("press").optional(),
+        modifiers: z
+          .array(z.enum(["Shift", "Control", "Alt", "Command", "Function", "CapsLock", "Numeric"]))
+          .max(8)
+          .optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ key, eventType, modifiers }) => {
+      try {
+        return jsonResult(await client.post("/playtest/send-key", { key, eventType, modifiers: joinCsv(modifiers) }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_send_click",
+    {
+      title: "Send Click To Unity Game View",
+      description: "Send a mouse click event to the Unity Game view using normalized or pixel coordinates.",
+      inputSchema: {
+        x: z.number().describe("X coordinate, normalized 0-1 by default or pixels when coordinateSpace is pixels."),
+        y: z.number().describe("Y coordinate, normalized 0-1 by default or pixels when coordinateSpace is pixels."),
+        coordinateSpace: z.enum(["normalized", "pixels"]).default("normalized").optional(),
+        button: z.number().int().min(0).max(2).default(0).optional(),
+        eventType: z.enum(["press", "down", "up"]).default("press").optional(),
+        modifiers: z
+          .array(z.enum(["Shift", "Control", "Alt", "Command", "Function", "CapsLock", "Numeric"]))
+          .max(8)
+          .optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ x, y, coordinateSpace, button, eventType, modifiers }) => {
+      try {
+        return jsonResult(
+          await client.post("/playtest/send-click", { x, y, coordinateSpace, button, eventType, modifiers: joinCsv(modifiers) }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_capture_playtest_frame",
+    {
+      title: "Capture Unity Playtest Frame",
+      description: "Capture the Unity Game view and attach the image path to the active playtest session.",
+      inputSchema: {
+        fileName: z.string().min(1).max(128).optional(),
+        superSize: z.number().int().min(1).max(4).default(1).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ fileName, superSize }) => {
+      try {
+        return jsonResult(await client.post("/playtest/capture-frame", { fileName, superSize }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_get_playtest_report",
+    {
+      title: "Get Unity Playtest Report",
+      description: "Read the current ScenePort playtest report with actions, captures, console observations, and recommendations.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolGet("/playtest/report"),
+  );
+
   server.registerResource(
     "sceneport-project-status",
     "sceneport://project/status",
@@ -468,6 +639,28 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     async (uri) => jsonResource(uri, await client.get("/packages")),
   );
 
+  server.registerResource(
+    "sceneport-playtest-status",
+    "sceneport://playtest/status",
+    {
+      title: "ScenePort Playtest Status",
+      description: "Current playtest session status.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.get("/playtest/status")),
+  );
+
+  server.registerResource(
+    "sceneport-playtest-report",
+    "sceneport://playtest/report",
+    {
+      title: "ScenePort Playtest Report",
+      description: "Current playtest actions, captures, console observations, and recommendations.",
+      mimeType: "application/json",
+    },
+    async (uri) => jsonResource(uri, await client.get("/playtest/report")),
+  );
+
   function registerPrompt(name: string, title: string, description: string, text: string) {
     server.registerPrompt(
       name,
@@ -529,6 +722,13 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "Debug Play Mode",
     "Enter play mode, observe status, and debug Unity runtime issues.",
     "Use ScenePort to check compilation status and console logs, enter play mode, capture the Game view if useful, inspect logs and scene state, then exit play mode before applying focused fixes.",
+  );
+
+  registerPrompt(
+    "sceneport:playtest-pilot",
+    "Run Playtest Pilot",
+    "Run a safe Unity playtest loop with observations and a report.",
+    "Use ScenePort to check compilation status, start a playtest, wait for Unity to enter play mode, capture the Game view, send minimal key or click interactions when appropriate, watch console logs, stop the playtest, and return the playtest report with blockers and next fixes.",
   );
 
   registerPrompt(

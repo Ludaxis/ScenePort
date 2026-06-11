@@ -1,6 +1,6 @@
 {
   "name": "sceneport",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Safe Unity Editor MCP bridge for Codex and other MCP clients.",
   "author": {
     "name": "ScenePort Maintainers",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "ScenePort",
     "shortDescription": "Safe MCP bridge into the Unity Editor.",
-    "longDescription": "ScenePort lets Codex inspect and safely operate a live Unity Editor through MCP tools for scene hierarchy, selection, console logs, GameObject creation, transform edits, components, serialized properties, assets, tests, play mode, screenshots, resources, and prompts.",
+    "longDescription": "ScenePort lets Codex inspect, safely operate, and playtest a live Unity Editor through MCP tools for scene hierarchy, selection, console logs, GameObject creation, transform edits, components, serialized properties, assets, tests, play mode, screenshots, playtest reports, resources, and prompts.",
     "developerName": "ScenePort Maintainers",
     "category": "Developer Tools",
     "capabilities": [
@@ -37,7 +37,8 @@
       "Read Unity console errors.",
       "Search Unity assets.",
       "Run EditMode tests.",
-      "Create a GameObject safely."
+      "Create a GameObject safely.",
+      "Run a Unity playtest report."
     ],
     "brandColor": "#2A7FFF"
   }

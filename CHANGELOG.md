@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+### Playtest Pilot
+- Added ScenePort playtest sessions with start, stop, status, and report tools.
+- Added MCP-side waiting that does not block the Unity Editor main thread.
+- Added Game view key/click input helpers for lightweight playtest interactions.
+- Added playtest frame capture tracking and report resources.
+- Added agent-readable playtest reports with console observations, captures, interactions,
+  and recommendations.
+
 ## 0.3.0
 
 **Breaking: update the Unity package and the MCP server together.** The bridge now

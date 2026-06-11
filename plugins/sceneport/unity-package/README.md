@@ -55,3 +55,10 @@ large), `415` (non-JSON POST). `/health` is the only endpoint exempt from the to
 - `POST /capture-game-view`
 - `POST /play-mode`
 - `GET /packages`
+- `POST /playtest/start`
+- `POST /playtest/stop`
+- `GET /playtest/status`
+- `GET /playtest/report`
+- `POST /playtest/capture-frame`
+- `POST /playtest/send-key`
+- `POST /playtest/send-click`

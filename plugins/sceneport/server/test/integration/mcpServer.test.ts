@@ -26,6 +26,14 @@ const TOOL_NAMES = [
   "unity_capture_game_view",
   "unity_enter_play_mode",
   "unity_exit_play_mode",
+  "unity_start_playtest",
+  "unity_stop_playtest",
+  "unity_playtest_status",
+  "unity_wait",
+  "unity_send_key",
+  "unity_send_click",
+  "unity_capture_playtest_frame",
+  "unity_get_playtest_report",
 ];
 
 let bridge: FakeBridge | undefined;
@@ -69,10 +77,14 @@ describe("MCP server tool surface", () => {
       "/set-serialized-property": () => ({ body: { status: "ok" } }),
       "/run-tests": () => ({ body: { status: "ok", run: { mode: "editmode" } } }),
       "/game-object": () => ({ body: { status: "ok" } }),
+      "/playtest/start": () => ({ body: { status: "ok", session: { status: "running" } } }),
+      "/playtest/status": () => ({ body: { status: "ok", session: { status: "running" } } }),
+      "/playtest/send-key": () => ({ body: { status: "ok" } }),
+      "/playtest/send-click": () => ({ body: { status: "ok" } }),
     });
   });
 
-  it("lists exactly the 17 expected tools", async () => {
+  it("lists exactly the 25 expected tools", async () => {
     const { tools } = await client!.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
   });
@@ -122,6 +134,26 @@ describe("MCP server tool surface", () => {
     expect((hit?.body as Record<string, unknown>).mode).toBe("editmode");
   });
 
+  it("plumbs playtest commands to the bridge", async () => {
+    await client!.callTool({ name: "unity_start_playtest", arguments: { label: "Smoke", enterPlayMode: false } });
+    await client!.callTool({ name: "unity_send_key", arguments: { key: "Space", modifiers: ["Shift"] } });
+    await client!.callTool({ name: "unity_send_click", arguments: { x: 0.5, y: 0.75, button: 0 } });
+    await client!.callTool({ name: "unity_wait", arguments: { milliseconds: 0 } });
+
+    const start = bridge!.requests.find((r) => r.url === "/playtest/start");
+    expect((start?.body as Record<string, unknown>).label).toBe("Smoke");
+    expect((start?.body as Record<string, unknown>).enterPlayMode).toBe(false);
+
+    const key = bridge!.requests.find((r) => r.url === "/playtest/send-key");
+    expect((key?.body as Record<string, unknown>).key).toBe("Space");
+    expect((key?.body as Record<string, unknown>).modifiers).toBe("Shift");
+
+    const click = bridge!.requests.find((r) => r.url === "/playtest/send-click");
+    expect((click?.body as Record<string, unknown>).x).toBe(0.5);
+    expect((click?.body as Record<string, unknown>).y).toBe(0.75);
+    expect(bridge!.requests.some((r) => r.url === "/playtest/status")).toBe(true);
+  });
+
   it("reports invalid input as a validation error", async () => {
     const result = await client!.callTool({ name: "unity_create_game_object", arguments: {} });
     expect(result.isError).toBe(true);
@@ -153,12 +185,14 @@ describe("MCP server resources and prompts", () => {
     await connect({
       "/health": okHealth,
       "/game-object": (r) => ({ body: { status: "ok", url: r.url } }),
+      "/playtest/status": () => ({ body: { status: "ok", session: { status: "idle" } } }),
+      "/playtest/report": () => ({ body: { status: "ok", report: { summary: "idle" } } }),
     });
   });
 
-  it("lists 7 static resources and 2 templates", async () => {
+  it("lists 9 static resources and 2 templates", async () => {
     const resources = await client!.listResources();
-    expect(resources.resources.length).toBe(7);
+    expect(resources.resources.length).toBe(9);
     const templates = await client!.listResourceTemplates();
     expect(templates.resourceTemplates.length).toBe(2);
   });
@@ -175,9 +209,9 @@ describe("MCP server resources and prompts", () => {
     expect(hit?.url).toContain("instanceId=123");
   });
 
-  it("lists 7 prompts that render non-empty text", async () => {
+  it("lists 8 prompts that render non-empty text", async () => {
     const { prompts } = await client!.listPrompts();
-    expect(prompts.length).toBe(7);
+    expect(prompts.length).toBe(8);
     const rendered = await client!.getPrompt({ name: prompts[0].name });
     expect((rendered.messages[0].content as { text: string }).text.length).toBeGreaterThan(0);
   });

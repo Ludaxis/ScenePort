@@ -36,7 +36,15 @@
 - Version single-sourcing
 - Release workflow and Unity package tarball
 
-## v0.4: Team Readiness
+## v0.4: Playtest Pilot (shipped)
+
+- Playtest start/stop/status/report tools
+- MCP-side wait without blocking Unity's main thread
+- Game view key/click input helpers
+- Tracked playtest frame captures
+- Agent-readable report with console observations and recommendations
+
+## v0.5: Team Readiness
 
 - Audit log of mutating requests
 - `sceneport doctor` diagnostics command
@@ -44,7 +52,7 @@
 - Unity-in-CI via game-ci with a project license
 - Marketplace install guide for local Codex and Claude workflows
 
-## v0.5: Authoring Workflows
+## v0.6: Authoring Workflows
 
 - Create script
 - Create material

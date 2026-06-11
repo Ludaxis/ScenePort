@@ -5,7 +5,7 @@ description: Use ScenePort when the user asks to inspect, debug, test, or safely
 
 # ScenePort Unity Editor Workflow
 
-Use ScenePort when the task depends on live Unity Editor state: active scene, hierarchy, selected objects, console logs, play mode, tests, assets, Game view screenshots, packages, components, or inspector-level changes.
+Use ScenePort when the task depends on live Unity Editor state: active scene, hierarchy, selected objects, console logs, play mode, playtest sessions, tests, assets, Game view screenshots, packages, components, or inspector-level changes.
 
 Default workflow:
 
@@ -15,6 +15,7 @@ Default workflow:
 4. Keep changes small and reversible. ScenePort write tools are expected to use Unity Undo.
 5. After code or scene changes, read `unity_get_compilation_status`, console logs, and run relevant Unity tests when available.
 6. For visual debugging, use `unity_capture_game_view`; for runtime checks, use `unity_enter_play_mode` and `unity_exit_play_mode`.
+7. For playable flows, prefer the playtest loop: `unity_start_playtest`, `unity_wait`, `unity_capture_playtest_frame`, optional `unity_send_key`/`unity_send_click`, then `unity_stop_playtest` or `unity_get_playtest_report`.
 
 Safety rules:
 

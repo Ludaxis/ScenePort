@@ -42,7 +42,7 @@ Plugin Wrappers:
 
 ## Endpoint Contract
 
-Implemented in v0.3:
+Implemented in v0.4:
 
 - `GET /health`
 - `GET /scene`
@@ -62,10 +62,17 @@ Implemented in v0.3:
 - `POST /capture-game-view`
 - `POST /play-mode`
 - `GET /packages`
+- `POST /playtest/start`
+- `POST /playtest/stop`
+- `GET /playtest/status`
+- `GET /playtest/report`
+- `POST /playtest/capture-frame`
+- `POST /playtest/send-key`
+- `POST /playtest/send-click`
 
 ## Tool Contract
 
-Implemented in v0.3:
+Implemented in v0.4:
 
 - `unity_status`
 - `unity_scene_hierarchy`
@@ -84,6 +91,14 @@ Implemented in v0.3:
 - `unity_capture_game_view`
 - `unity_enter_play_mode`
 - `unity_exit_play_mode`
+- `unity_start_playtest`
+- `unity_stop_playtest`
+- `unity_playtest_status`
+- `unity_wait`
+- `unity_send_key`
+- `unity_send_click`
+- `unity_capture_playtest_frame`
+- `unity_get_playtest_report`
 
 ## Future Architecture
 

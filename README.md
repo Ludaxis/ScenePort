@@ -103,6 +103,14 @@ cd ScenePort
 - `unity_capture_game_view`
 - `unity_enter_play_mode`
 - `unity_exit_play_mode`
+- `unity_start_playtest`
+- `unity_stop_playtest`
+- `unity_playtest_status`
+- `unity_wait`
+- `unity_send_key`
+- `unity_send_click`
+- `unity_capture_playtest_frame`
+- `unity_get_playtest_report`
 
 ## Resources
 
@@ -115,6 +123,8 @@ cd ScenePort
 - `sceneport://tests/editmode`
 - `sceneport://tests/playmode`
 - `sceneport://packages`
+- `sceneport://playtest/status`
+- `sceneport://playtest/report`
 
 ## Prompts
 
@@ -124,6 +134,7 @@ cd ScenePort
 - `sceneport:create-ui-from-screenshot`
 - `sceneport:write-playmode-test`
 - `sceneport:debug-play-mode`
+- `sceneport:playtest-pilot`
 - `sceneport:prepare-build`
 
 ## Design Principles

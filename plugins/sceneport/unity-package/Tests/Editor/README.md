@@ -16,6 +16,8 @@ EditMode test coverage for the ScenePort bridge:
 - **SceneHandlerTests** — create + Undo, parenting, transform edits (incl. exponent
   values), set-serialized-property across float/int/bool/string/Color/enum, hierarchy
   pagination/truncation (incl. the exact-count regression), selection, path resolution.
+- **PlaytestHandlerTests** — playtest session lifecycle, idle/running/stopped reports,
+  console observation counts, and recommendations.
 - **ScenePortHttpIntegrationTests** — real HTTP round-trips through the auto-started
   bridge (`[UnityTest]` coroutines).
 

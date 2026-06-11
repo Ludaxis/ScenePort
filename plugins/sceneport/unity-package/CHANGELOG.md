@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Added Playtest Pilot endpoints for start, stop, status, report, Game view key/click events,
+  and tracked frame captures.
+- Added playtest reports with interactions, captures, recent console observations, and
+  recommendations.
+
 ## 0.3.0
 
 **Breaking: update the ScenePort MCP server to 0.3+ alongside this package.** The bridge

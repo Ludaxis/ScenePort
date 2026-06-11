@@ -21,7 +21,9 @@ namespace ScenePort.McpBridge.Editor.Tests
                 "/game-object", "/components", "/create-game-object", "/set-transform",
                 "/add-component", "/set-serialized-property", "/asset-search",
                 "/compilation-status", "/run-tests", "/tests-last", "/capture-game-view",
-                "/play-mode", "/packages",
+                "/play-mode", "/packages", "/playtest/start", "/playtest/stop",
+                "/playtest/status", "/playtest/report", "/playtest/capture-frame",
+                "/playtest/send-key", "/playtest/send-click",
             };
 
             foreach (var endpoint in endpoints)

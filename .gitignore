@@ -2,3 +2,6 @@
 **/.DS_Store
 **/*.log
 npm-debug.log*
+
+# Build/test artifacts
+**/coverage/

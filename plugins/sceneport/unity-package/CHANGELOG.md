@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0
+
+**Breaking: update the ScenePort MCP server to 0.3+ alongside this package.** The bridge
+now requires the `X-ScenePort-Token` header on every endpoint except `/health`.
+
+- Added a per-project auth token written to `Library/ScenePort/bridge.json` and reused
+  across editor restarts.
+- Added a request gate that rejects browser-initiated requests (any `Origin` header) and
+  non-loopback `Host` headers; removed the misleading CORS header.
+- Bridge now binds the first free port in 38987–38996 and records the bound port, token,
+  and project identity in the discovery file.
+- `/health` now reports `projectId`, `projectName`, and `tokenRequired`.
+- Added the `Tools > ScenePort > Require Auth Token` menu toggle (default on).
+- Replaced the hand-rolled JSON layer with `com.unity.nuget.newtonsoft-json` (new
+  dependency), fixing exponent-notation, NaN/Infinity, and control-character handling.
+- Split the bridge into testable units and added an EditMode test suite (run via
+  `TestProjects/BridgeHarness`).
+
+If a consumer project ships its own loose `Newtonsoft.Json.dll`, remove it and rely on
+the official `com.unity.nuget.newtonsoft-json` package to avoid a duplicate-assembly conflict.
+
 ## 0.2.0
 
 - Added GameObject detail and Component inspection endpoints.

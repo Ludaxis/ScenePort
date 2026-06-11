@@ -1,6 +1,6 @@
 {
   "name": "@sceneport/mcp-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP stdio server for the ScenePort Unity Editor bridge.",
   "type": "module",
   "private": true,
@@ -11,17 +11,25 @@
     "build": "tsc --noEmit && node scripts/build.mjs",
     "start": "node build/index.js",
     "dev": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "biome ci .",
+    "format": "biome format --write ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.2.0",
     "esbuild": "^0.28.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
   },
   "engines": {
     "node": ">=18"

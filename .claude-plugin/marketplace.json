@@ -10,7 +10,7 @@
       "displayName": "ScenePort",
       "source": "./plugins/sceneport",
       "description": "Safe Unity Editor MCP bridge for Codex, Claude Code, and other MCP clients.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "ScenePort Maintainers"
       },
@@ -18,7 +18,13 @@
       "repository": "https://github.com/Ludaxis/ScenePort",
       "license": "MIT",
       "category": "Developer Tools",
-      "tags": ["unity", "mcp", "codex", "claude-code", "game-dev"]
+      "tags": [
+        "unity",
+        "mcp",
+        "codex",
+        "claude-code",
+        "game-dev"
+      ]
     }
   ]
 }

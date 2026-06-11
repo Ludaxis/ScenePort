@@ -31,15 +31,23 @@
 - Menu item execution allowlist
 - Prompt workflows for fixing console errors and creating prefabs
 
+## v0.3.x: Security & Test Hardening (shipped)
+
+- Local auth token (per-project, in `Library/ScenePort/bridge.json`) — shipped
+- Origin validation + Host check (CSRF and DNS-rebinding defense) — shipped
+- Multi-editor discovery (port range 38987–38996 + discovery file) — shipped
+- Project identity verification — shipped
+- Newtonsoft-based JSON (exponent/NaN/control-char correctness) — shipped
+- EditMode test suite + MCP server vitest suite + CI test execution — shipped
+- Version single-sourcing — shipped
+
 ## v0.4: Team Readiness
 
 - MCP resources for scenes, assets, packages, tests, and logs
-- Multi-editor discovery
-- Local auth token
-- Origin validation
-- Audit log
+- Audit log of mutating requests
+- `sceneport doctor` diagnostics command
 - Sample Unity project
-- CI smoke test project
+- Unity-in-CI via game-ci with a project license
 
 ## v1.0: Open-Source Launch
 

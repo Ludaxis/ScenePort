@@ -1,0 +1,16 @@
+# Unity-generated, never committed for the test harness
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Ll]ogs/
+[Uu]serSettings/
+*.csproj
+*.sln
+.vsconfig
+Packages/packages-lock.json
+
+# Local test artifacts
+results*.xml
+*.log
+TestProjects/

@@ -10,7 +10,8 @@
   },
   "keywords": ["mcp", "ai", "editor", "codex", "claude"],
   "dependencies": {
-    "com.unity.test-framework": "1.4.0"
+    "com.unity.test-framework": "1.4.0",
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
   },
   "license": "MIT"
 }

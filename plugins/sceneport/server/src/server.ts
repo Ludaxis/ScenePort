@@ -1,14 +1,8 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { UnityBridgeClient } from "./unityClient.js";
+import { encodeSerializedValue, joinCsv, objectLocatorSchema, serializedValueSchema, vector3Schema } from "./encoding.js";
 import { errorResult, jsonResult } from "./toolResult.js";
-import {
-  encodeSerializedValue,
-  joinCsv,
-  objectLocatorSchema,
-  serializedValueSchema,
-  vector3Schema,
-} from "./encoding.js";
+import type { UnityBridgeClient } from "./unityClient.js";
 import { VERSION } from "./version.js";
 
 export function createScenePortServer(client: UnityBridgeClient): McpServer {
@@ -50,7 +44,8 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "unity_status",
     {
       title: "Unity Bridge Status",
-      description: "Check whether the ScenePort Unity Editor bridge is reachable, which Unity project it is bound to, and how it was discovered.",
+      description:
+        "Check whether the ScenePort Unity Editor bridge is reachable, which Unity project it is bound to, and how it was discovered.",
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: false },
     },

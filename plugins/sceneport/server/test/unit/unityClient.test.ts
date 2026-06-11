@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { UnityBridgeClient } from "../../src/unityClient.js";
 import { FakeBridge } from "../fixtures/fakeBridge.js";
 

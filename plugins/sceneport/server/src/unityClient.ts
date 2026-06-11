@@ -82,10 +82,7 @@ export class UnityBridgeClient {
         const health = (await this.request("GET", "/health")) as Record<string, unknown>;
         const actual = typeof health?.projectPath === "string" ? health.projectPath : undefined;
         if (actual && !projectPathsEqual(actual, this.expectedProjectPath)) {
-          this.identityError =
-            `ScenePort is connected to Unity project '${actual}' but SCENEPORT_PROJECT_PATH expects ` +
-            `'${this.expectedProjectPath}'. Another Unity instance probably owns this port. Close it, or ` +
-            `point SCENEPORT_UNITY_URL at the correct bridge (see Library/ScenePort/bridge.json in the expected project).`;
+          this.identityError = `ScenePort is connected to Unity project '${actual}' but SCENEPORT_PROJECT_PATH expects '${this.expectedProjectPath}'. Another Unity instance probably owns this port. Close it, or point SCENEPORT_UNITY_URL at the correct bridge (see Library/ScenePort/bridge.json in the expected project).`;
         }
         this.identityResolved = true;
       } catch {

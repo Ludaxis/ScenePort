@@ -13006,232 +13006,6 @@ var StdioServerTransport = class {
   }
 };
 
-// src/discovery.ts
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
-var DEFAULT_URL = "http://127.0.0.1:38987";
-var MAX_WALK_DEPTH = 10;
-function discoveryFilePath(projectPath) {
-  return join(projectPath, "Library", "ScenePort", "bridge.json");
-}
-function readBridgeFile(projectPath) {
-  try {
-    const path = discoveryFilePath(projectPath);
-    if (!existsSync(path)) {
-      return null;
-    }
-    const parsed = JSON.parse(readFileSync(path, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-function looksLikeUnityProject(dir) {
-  return existsSync(join(dir, "Assets")) && existsSync(join(dir, "ProjectSettings")) && existsSync(discoveryFilePath(dir));
-}
-function walkForProject(start) {
-  let dir = start;
-  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
-    if (looksLikeUnityProject(dir)) {
-      return dir;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-  return null;
-}
-function normalizeUrl(url) {
-  return url.replace(/\/$/, "");
-}
-function discoverBridge(env = process.env, cwd = process.cwd()) {
-  const explicitUrl = env.SCENEPORT_UNITY_URL;
-  const explicitToken = env.SCENEPORT_TOKEN;
-  const projectPathEnv = env.SCENEPORT_PROJECT_PATH;
-  let file = null;
-  let fileProject = null;
-  if (projectPathEnv) {
-    file = readBridgeFile(projectPathEnv);
-    if (file) {
-      fileProject = projectPathEnv;
-    }
-  }
-  if (!file) {
-    const walked = walkForProject(cwd);
-    if (walked) {
-      file = readBridgeFile(walked);
-      fileProject = walked;
-    }
-  }
-  if (explicitUrl) {
-    return {
-      baseUrl: normalizeUrl(explicitUrl),
-      token: explicitToken ?? file?.token,
-      projectPath: file?.projectPath ?? projectPathEnv,
-      source: "env-url",
-      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0
-    };
-  }
-  if (file?.url) {
-    return {
-      baseUrl: normalizeUrl(file.url),
-      token: explicitToken ?? file.token,
-      projectPath: file.projectPath ?? fileProject ?? void 0,
-      source: projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk",
-      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0
-    };
-  }
-  return {
-    baseUrl: DEFAULT_URL,
-    token: explicitToken,
-    source: "default"
-  };
-}
-function projectPathsEqual(a, b) {
-  if (!a || !b) {
-    return false;
-  }
-  const na = resolve(a);
-  const nb = resolve(b);
-  if (process.platform === "darwin" || process.platform === "win32") {
-    return na.toLowerCase() === nb.toLowerCase();
-  }
-  return na === nb;
-}
-
-// src/unityClient.ts
-var TOKEN_HEADER = "X-ScenePort-Token";
-var UnityBridgeClient = class {
-  target;
-  expectedProjectPath;
-  identityResolved = false;
-  identityError = null;
-  constructor(target, env = process.env) {
-    if (typeof target === "string") {
-      const discovered = discoverBridge(env);
-      this.target = { ...discovered, baseUrl: target.replace(/\/$/, ""), source: "env-url" };
-    } else {
-      this.target = target ?? discoverBridge(env);
-    }
-    this.expectedProjectPath = env.SCENEPORT_PROJECT_PATH;
-  }
-  get baseUrl() {
-    return this.target.baseUrl;
-  }
-  async get(path, params = {}) {
-    await this.guardIdentity();
-    return this.request("GET", path, params);
-  }
-  async post(path, body) {
-    await this.guardIdentity();
-    return this.request("POST", path, void 0, body);
-  }
-  /**
-   * Health plus discovery/identity metadata for unity_status. Never throws on identity
-   * mismatch — it reports it, so the tool can be used to diagnose a wrong-project connection.
-   */
-  async statusReport() {
-    let health = {};
-    let error2;
-    try {
-      const result = await this.request("GET", "/health");
-      if (result && typeof result === "object") {
-        health = result;
-      }
-    } catch (e) {
-      error2 = e instanceof Error ? e.message : String(e);
-    }
-    const actualPath = typeof health.projectPath === "string" ? health.projectPath : void 0;
-    const identityMatch = this.expectedProjectPath ? projectPathsEqual(actualPath, this.expectedProjectPath) : null;
-    const legacyBridge = health.projectId === void 0 && !error2;
-    return {
-      ...health,
-      ...error2 ? { status: "error", error: error2 } : {},
-      discoverySource: this.target.source,
-      discoveryFilePath: this.target.discoveryFilePath ?? null,
-      tokenConfigured: Boolean(this.target.token),
-      identityMatch,
-      ...legacyBridge ? { warning: "Unity bridge is outdated (pre-0.3); update the ScenePort UPM package to enable auth and discovery." } : {}
-    };
-  }
-  async guardIdentity() {
-    if (!this.expectedProjectPath) {
-      return;
-    }
-    if (!this.identityResolved) {
-      try {
-        const health = await this.request("GET", "/health");
-        const actual = typeof health?.projectPath === "string" ? health.projectPath : void 0;
-        if (actual && !projectPathsEqual(actual, this.expectedProjectPath)) {
-          this.identityError = `ScenePort is connected to Unity project '${actual}' but SCENEPORT_PROJECT_PATH expects '${this.expectedProjectPath}'. Another Unity instance probably owns this port. Close it, or point SCENEPORT_UNITY_URL at the correct bridge (see Library/ScenePort/bridge.json in the expected project).`;
-        }
-        this.identityResolved = true;
-      } catch {
-      }
-    }
-    if (this.identityError) {
-      throw new Error(this.identityError);
-    }
-  }
-  async request(method, path, params = {}, body, isRetry = false) {
-    const url = this.url(path, params);
-    const headers = { Accept: "application/json" };
-    if (this.target.token) {
-      headers[TOKEN_HEADER] = this.target.token;
-    }
-    let response;
-    try {
-      response = method === "GET" ? await fetch(url, { method, headers }) : await fetch(url, {
-        method,
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-    } catch (error2) {
-      if (!isRetry && this.target.source !== "env-url" && this.rediscover()) {
-        return this.request(method, path, params, body, true);
-      }
-      throw error2;
-    }
-    if (response.status === 401 && !isRetry && this.rediscover()) {
-      return this.request(method, path, params, body, true);
-    }
-    return this.parse(response);
-  }
-  rediscover() {
-    const next = discoverBridge();
-    const changed = next.baseUrl !== this.target.baseUrl || next.token !== this.target.token;
-    this.target = next;
-    return changed;
-  }
-  url(path, params = {}) {
-    const url = new URL(path, this.target.baseUrl);
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== void 0) {
-        url.searchParams.set(key, String(value));
-      }
-    }
-    return url;
-  }
-  async parse(response) {
-    const text = await response.text();
-    let payload = text;
-    if (text.length > 0) {
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        payload = { status: "error", error: text };
-      }
-    }
-    if (!response.ok) {
-      const message = typeof payload === "object" && payload && "error" in payload ? String(payload.error) : `Unity bridge returned HTTP ${response.status}`;
-      throw new Error(message);
-    }
-    return payload;
-  }
-};
-
 // node_modules/zod/v3/external.js
 var external_exports = {};
 __export(external_exports, {
@@ -21569,37 +21343,6 @@ var EMPTY_COMPLETION_RESULT = {
   }
 };
 
-// src/toolResult.ts
-function jsonResult(payload) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(payload, null, 2)
-      }
-    ],
-    structuredContent: toStructuredContent(payload)
-  };
-}
-function errorResult(error2) {
-  const message = error2 instanceof Error ? error2.message : String(error2);
-  return {
-    isError: true,
-    content: [
-      {
-        type: "text",
-        text: message
-      }
-    ]
-  };
-}
-function toStructuredContent(payload) {
-  if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
-    return payload;
-  }
-  return { value: payload };
-}
-
 // src/encoding.ts
 var vector2Schema = external_exports.object({ x: external_exports.number(), y: external_exports.number() });
 var vector3Schema = external_exports.object({ x: external_exports.number(), y: external_exports.number(), z: external_exports.number() });
@@ -21641,6 +21384,37 @@ function encodeSerializedValue(value) {
 }
 function joinCsv(values) {
   return values && values.length > 0 ? values.join(",") : void 0;
+}
+
+// src/toolResult.ts
+function jsonResult(payload) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(payload, null, 2)
+      }
+    ],
+    structuredContent: toStructuredContent(payload)
+  };
+}
+function errorResult(error2) {
+  const message = error2 instanceof Error ? error2.message : String(error2);
+  return {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: message
+      }
+    ]
+  };
+}
+function toStructuredContent(payload) {
+  if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+    return payload;
+  }
+  return { value: payload };
 }
 
 // src/version.ts
@@ -22140,6 +21914,232 @@ function createScenePortServer(client) {
   );
   return server;
 }
+
+// src/discovery.ts
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+var DEFAULT_URL = "http://127.0.0.1:38987";
+var MAX_WALK_DEPTH = 10;
+function discoveryFilePath(projectPath) {
+  return join(projectPath, "Library", "ScenePort", "bridge.json");
+}
+function readBridgeFile(projectPath) {
+  try {
+    const path = discoveryFilePath(projectPath);
+    if (!existsSync(path)) {
+      return null;
+    }
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function looksLikeUnityProject(dir) {
+  return existsSync(join(dir, "Assets")) && existsSync(join(dir, "ProjectSettings")) && existsSync(discoveryFilePath(dir));
+}
+function walkForProject(start) {
+  let dir = start;
+  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
+    if (looksLikeUnityProject(dir)) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  return null;
+}
+function normalizeUrl(url) {
+  return url.replace(/\/$/, "");
+}
+function discoverBridge(env = process.env, cwd = process.cwd()) {
+  const explicitUrl = env.SCENEPORT_UNITY_URL;
+  const explicitToken = env.SCENEPORT_TOKEN;
+  const projectPathEnv = env.SCENEPORT_PROJECT_PATH;
+  let file = null;
+  let fileProject = null;
+  if (projectPathEnv) {
+    file = readBridgeFile(projectPathEnv);
+    if (file) {
+      fileProject = projectPathEnv;
+    }
+  }
+  if (!file) {
+    const walked = walkForProject(cwd);
+    if (walked) {
+      file = readBridgeFile(walked);
+      fileProject = walked;
+    }
+  }
+  if (explicitUrl) {
+    return {
+      baseUrl: normalizeUrl(explicitUrl),
+      token: explicitToken ?? file?.token,
+      projectPath: file?.projectPath ?? projectPathEnv,
+      source: "env-url",
+      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0
+    };
+  }
+  if (file?.url) {
+    return {
+      baseUrl: normalizeUrl(file.url),
+      token: explicitToken ?? file.token,
+      projectPath: file.projectPath ?? fileProject ?? void 0,
+      source: projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk",
+      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0
+    };
+  }
+  return {
+    baseUrl: DEFAULT_URL,
+    token: explicitToken,
+    source: "default"
+  };
+}
+function projectPathsEqual(a, b) {
+  if (!a || !b) {
+    return false;
+  }
+  const na = resolve(a);
+  const nb = resolve(b);
+  if (process.platform === "darwin" || process.platform === "win32") {
+    return na.toLowerCase() === nb.toLowerCase();
+  }
+  return na === nb;
+}
+
+// src/unityClient.ts
+var TOKEN_HEADER = "X-ScenePort-Token";
+var UnityBridgeClient = class {
+  target;
+  expectedProjectPath;
+  identityResolved = false;
+  identityError = null;
+  constructor(target, env = process.env) {
+    if (typeof target === "string") {
+      const discovered = discoverBridge(env);
+      this.target = { ...discovered, baseUrl: target.replace(/\/$/, ""), source: "env-url" };
+    } else {
+      this.target = target ?? discoverBridge(env);
+    }
+    this.expectedProjectPath = env.SCENEPORT_PROJECT_PATH;
+  }
+  get baseUrl() {
+    return this.target.baseUrl;
+  }
+  async get(path, params = {}) {
+    await this.guardIdentity();
+    return this.request("GET", path, params);
+  }
+  async post(path, body) {
+    await this.guardIdentity();
+    return this.request("POST", path, void 0, body);
+  }
+  /**
+   * Health plus discovery/identity metadata for unity_status. Never throws on identity
+   * mismatch — it reports it, so the tool can be used to diagnose a wrong-project connection.
+   */
+  async statusReport() {
+    let health = {};
+    let error2;
+    try {
+      const result = await this.request("GET", "/health");
+      if (result && typeof result === "object") {
+        health = result;
+      }
+    } catch (e) {
+      error2 = e instanceof Error ? e.message : String(e);
+    }
+    const actualPath = typeof health.projectPath === "string" ? health.projectPath : void 0;
+    const identityMatch = this.expectedProjectPath ? projectPathsEqual(actualPath, this.expectedProjectPath) : null;
+    const legacyBridge = health.projectId === void 0 && !error2;
+    return {
+      ...health,
+      ...error2 ? { status: "error", error: error2 } : {},
+      discoverySource: this.target.source,
+      discoveryFilePath: this.target.discoveryFilePath ?? null,
+      tokenConfigured: Boolean(this.target.token),
+      identityMatch,
+      ...legacyBridge ? { warning: "Unity bridge is outdated (pre-0.3); update the ScenePort UPM package to enable auth and discovery." } : {}
+    };
+  }
+  async guardIdentity() {
+    if (!this.expectedProjectPath) {
+      return;
+    }
+    if (!this.identityResolved) {
+      try {
+        const health = await this.request("GET", "/health");
+        const actual = typeof health?.projectPath === "string" ? health.projectPath : void 0;
+        if (actual && !projectPathsEqual(actual, this.expectedProjectPath)) {
+          this.identityError = `ScenePort is connected to Unity project '${actual}' but SCENEPORT_PROJECT_PATH expects '${this.expectedProjectPath}'. Another Unity instance probably owns this port. Close it, or point SCENEPORT_UNITY_URL at the correct bridge (see Library/ScenePort/bridge.json in the expected project).`;
+        }
+        this.identityResolved = true;
+      } catch {
+      }
+    }
+    if (this.identityError) {
+      throw new Error(this.identityError);
+    }
+  }
+  async request(method, path, params = {}, body, isRetry = false) {
+    const url = this.url(path, params);
+    const headers = { Accept: "application/json" };
+    if (this.target.token) {
+      headers[TOKEN_HEADER] = this.target.token;
+    }
+    let response;
+    try {
+      response = method === "GET" ? await fetch(url, { method, headers }) : await fetch(url, {
+        method,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch (error2) {
+      if (!isRetry && this.target.source !== "env-url" && this.rediscover()) {
+        return this.request(method, path, params, body, true);
+      }
+      throw error2;
+    }
+    if (response.status === 401 && !isRetry && this.rediscover()) {
+      return this.request(method, path, params, body, true);
+    }
+    return this.parse(response);
+  }
+  rediscover() {
+    const next = discoverBridge();
+    const changed = next.baseUrl !== this.target.baseUrl || next.token !== this.target.token;
+    this.target = next;
+    return changed;
+  }
+  url(path, params = {}) {
+    const url = new URL(path, this.target.baseUrl);
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== void 0) {
+        url.searchParams.set(key, String(value));
+      }
+    }
+    return url;
+  }
+  async parse(response) {
+    const text = await response.text();
+    let payload = text;
+    if (text.length > 0) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = { status: "error", error: text };
+      }
+    }
+    if (!response.ok) {
+      const message = typeof payload === "object" && payload && "error" in payload ? String(payload.error) : `Unity bridge returned HTTP ${response.status}`;
+      throw new Error(message);
+    }
+    return payload;
+  }
+};
 
 // src/index.ts
 async function main() {

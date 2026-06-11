@@ -32,10 +32,11 @@ cd ScenePort
    plugins/sceneport/unity-package/package.json
    ```
 
-2. Open your Unity project. ScenePort starts a local editor bridge at:
+2. Open your Unity project. ScenePort starts a local editor bridge on the first free port
+   in `38987–38996` and writes its port and a per-project auth token to:
 
    ```text
-   http://127.0.0.1:38987
+   <YourUnityProject>/Library/ScenePort/bridge.json
    ```
 
 3. Build the MCP server when developing locally.
@@ -48,17 +49,27 @@ cd ScenePort
    npm run build
    ```
 
-4. Connect Claude Code directly from your project.
+4. Connect Claude Code directly from your project. ScenePort discovers the bridge (port
+   and token) automatically when the MCP server runs from inside your Unity project. If it
+   runs elsewhere, set `SCENEPORT_PROJECT_PATH` to your Unity project folder so it can find
+   `Library/ScenePort/bridge.json`:
 
    ```bash
    claude mcp add-json sceneport '{
      "command": "node",
      "args": ["/absolute/path/to/ScenePort/plugins/sceneport/server/build/index.js"],
      "env": {
-       "SCENEPORT_UNITY_URL": "http://127.0.0.1:38987"
+       "SCENEPORT_PROJECT_PATH": "/absolute/path/to/YourUnityProject"
      }
    }'
    ```
+
+   `SCENEPORT_UNITY_URL` is optional and only needed to pin a specific bridge URL.
+
+   **Troubleshooting a 401:** the server and Unity package must both be v0.3+. The token is
+   read automatically from `Library/ScenePort/bridge.json`; set `SCENEPORT_PROJECT_PATH` if
+   the server does not run from inside the Unity project. You can toggle the requirement via
+   `Tools > ScenePort > Require Auth Token` in the editor.
 
 5. For Codex, install from the local marketplace after replacing the path with your local checkout:
 

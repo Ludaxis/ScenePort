@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { jsonResult, errorResult } from "../../src/toolResult.js";
+import { describe, expect, it } from "vitest";
+import { errorResult, jsonResult } from "../../src/toolResult.js";
 
 describe("jsonResult", () => {
   it("renders text content as pretty JSON", () => {

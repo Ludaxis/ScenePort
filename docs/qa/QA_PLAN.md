@@ -73,10 +73,31 @@ Regression smoke:
 3. Fix code manually or with an agent.
 4. Confirm console errors update after Unity recompiles.
 
+## Manual Security Checks
+
+CSRF defense:
+
+1. Open any local HTML page and run, from its console:
+   `fetch("http://127.0.0.1:38987/play-mode", { method: "POST", body: '{"action":"enter"}' })`.
+2. Confirm the request is rejected (403) and play mode does not change.
+
+Two-project isolation:
+
+1. Open two Unity projects at once.
+2. Confirm the second bridge binds `38988` and each project's `Library/ScenePort/bridge.json`
+   has a distinct port and token.
+3. With `SCENEPORT_PROJECT_PATH` set, confirm the MCP server talks to the matching project
+   and `unity_status` reports `identityMatch: true`.
+
+These are covered automatically by the EditMode suite (CSRF simulation, gate matrix) and the
+vitest suite (identity guard), but should be spot-checked manually before a release.
+
 ## Release Gates
 
 - No default remote network binding.
 - No arbitrary execution in default toolset.
 - No direct scene YAML writes in docs or skills.
 - All JSON manifests validate.
+- Auth token required on all endpoints except `/health`.
+- `npm test` and the EditMode suite pass; versions in sync; committed bundle is fresh.
 - README quick start works from a clean checkout.

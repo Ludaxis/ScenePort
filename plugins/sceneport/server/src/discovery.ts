@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export type DiscoverySource = "env-url" | "discovery-file" | "cwd-walk" | "default";
 
@@ -38,11 +38,7 @@ function readBridgeFile(projectPath: string): BridgeFile | null {
 }
 
 function looksLikeUnityProject(dir: string): boolean {
-  return (
-    existsSync(join(dir, "Assets")) &&
-    existsSync(join(dir, "ProjectSettings")) &&
-    existsSync(discoveryFilePath(dir))
-  );
+  return existsSync(join(dir, "Assets")) && existsSync(join(dir, "ProjectSettings")) && existsSync(discoveryFilePath(dir));
 }
 
 function walkForProject(start: string): string | null {

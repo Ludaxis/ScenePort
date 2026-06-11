@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { UnityBridgeClient } from "./unityClient.js";
 import { createScenePortServer } from "./server.js";
+import { UnityBridgeClient } from "./unityClient.js";
 
 async function main() {
   const client = new UnityBridgeClient();

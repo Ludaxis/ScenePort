@@ -1,5 +1,5 @@
-import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
-import { type AddressInfo } from "node:net";
+import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 
 export interface RecordedRequest {
   method: string;

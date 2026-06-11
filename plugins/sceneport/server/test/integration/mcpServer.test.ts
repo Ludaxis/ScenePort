@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createScenePortServer } from "../../src/server.js";
 import { UnityBridgeClient } from "../../src/unityClient.js";
 import { VERSION } from "../../src/version.js";

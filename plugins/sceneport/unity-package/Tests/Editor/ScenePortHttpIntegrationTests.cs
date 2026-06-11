@@ -1,5 +1,8 @@
 using System.Collections;
+using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -97,6 +100,41 @@ namespace ScenePort.McpBridge.Editor.Tests
 
             Assert.AreEqual(System.Net.HttpStatusCode.Forbidden, task.Result.StatusCode);
             Assert.IsNull(GameObject.Find("CsrfProbe"), "Cross-origin request must not mutate the scene.");
+        }
+
+        [UnityTest]
+        public IEnumerator ChunkedBodyOverLimitIsRejectedAndDoesNotMutate()
+        {
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            var body = "{\"name\":\"OversizeProbe\",\"padding\":\"" + new string('x', 1024 * 1024 + 1) + "\"}";
+            var task = Client.SendAsync(Authed(HttpMethod.Post, "/create-game-object", new StreamingJsonContent(body)));
+            yield return Await(task);
+
+            Assert.AreEqual((System.Net.HttpStatusCode)413, task.Result.StatusCode);
+            Assert.IsNull(GameObject.Find("OversizeProbe"), "Oversized chunked request must not mutate the scene.");
+        }
+
+        private sealed class StreamingJsonContent : HttpContent
+        {
+            private readonly byte[] bytes;
+
+            internal StreamingJsonContent(string body)
+            {
+                bytes = Encoding.UTF8.GetBytes(body);
+                Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            }
+
+            protected override Task SerializeToStreamAsync(Stream stream, TransportContext context)
+            {
+                return stream.WriteAsync(bytes, 0, bytes.Length);
+            }
+
+            protected override bool TryComputeLength(out long length)
+            {
+                length = 0;
+                return false;
+            }
         }
     }
 }

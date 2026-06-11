@@ -19,7 +19,9 @@ Unity Editor APIs must run in the Unity process, usually on the main thread. MCP
 
 Unity Package:
 
-- Starts a localhost bridge on `127.0.0.1:38987`.
+- Starts a localhost bridge on `127.0.0.1`, using the first free port in `38987-38996`.
+- Writes port, project identity, and a per-project auth token to `Library/ScenePort/bridge.json`.
+- Rejects unsafe requests before body read or Unity main-thread work.
 - Captures console logs through `Application.logMessageReceived`.
 - Runs editor API work through a main-thread queue.
 - Uses `Undo` for write operations.
@@ -40,32 +42,54 @@ Plugin Wrappers:
 
 ## Endpoint Contract
 
-Implemented in v0.1:
+Implemented in v0.3:
 
 - `GET /health`
+- `GET /scene`
 - `GET /scene-hierarchy`
 - `GET /selection`
 - `GET /console`
+- `GET /game-object`
+- `GET /components`
 - `POST /create-game-object`
 - `POST /set-transform`
+- `POST /add-component`
+- `POST /set-serialized-property`
+- `GET /asset-search`
+- `GET /compilation-status`
+- `POST /run-tests`
+- `GET /tests-last`
+- `POST /capture-game-view`
+- `POST /play-mode`
+- `GET /packages`
 
 ## Tool Contract
 
-Implemented in v0.1:
+Implemented in v0.3:
 
 - `unity_status`
 - `unity_scene_hierarchy`
 - `unity_selection`
 - `unity_console_logs`
+- `unity_get_game_object`
+- `unity_get_components`
 - `unity_create_game_object`
 - `unity_set_transform`
+- `unity_add_component`
+- `unity_set_serialized_property`
+- `unity_asset_search`
+- `unity_get_compilation_status`
+- `unity_run_editmode_tests`
+- `unity_run_playmode_tests`
+- `unity_capture_game_view`
+- `unity_enter_play_mode`
+- `unity_exit_play_mode`
 
 ## Future Architecture
 
-- Resource templates for assets, scenes, prefabs, packages, and tests.
-- Tool annotations for destructive actions.
 - Optional MCP Streamable HTTP mode.
-- Multi-editor discovery.
-- Screenshot capture for Game view and Scene view.
-- Test runner API integration.
+- Audit log of mutating requests.
+- `sceneport doctor` diagnostics.
+- Scene view screenshot capture.
+- Menu item execution allowlist.
 - Build pipeline integration.

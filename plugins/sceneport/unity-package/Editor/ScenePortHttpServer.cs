@@ -142,10 +142,7 @@ namespace ScenePort.McpBridge.Editor
                 string body = null;
                 if (request.HasEntityBody)
                 {
-                    using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
-                    {
-                        body = reader.ReadToEnd();
-                    }
+                    body = ReadBodyWithLimit(request);
                 }
 
                 var path = request.Url.AbsolutePath;
@@ -153,9 +150,39 @@ namespace ScenePort.McpBridge.Editor
                 var response = mainThreadExecutor(() => router.Dispatch(path, query, body));
                 Write(context, 200, response);
             }
+            catch (RequestBodyTooLargeException)
+            {
+                Write(context, 413, ScenePortJson.Serialize(new ErrorResponse("Request body too large.")));
+            }
             catch (Exception ex)
             {
                 Write(context, 500, ScenePortJson.Serialize(new ErrorResponse(ex.Message)));
+            }
+        }
+
+        private static string ReadBodyWithLimit(HttpListenerRequest request)
+        {
+            var encoding = request.ContentEncoding ?? Encoding.UTF8;
+            using (var output = new MemoryStream())
+            {
+                var buffer = new byte[8192];
+                while (true)
+                {
+                    var read = request.InputStream.Read(buffer, 0, buffer.Length);
+                    if (read <= 0)
+                    {
+                        break;
+                    }
+
+                    if (output.Length + read > MaxBodyBytes)
+                    {
+                        throw new RequestBodyTooLargeException();
+                    }
+
+                    output.Write(buffer, 0, read);
+                }
+
+                return encoding.GetString(output.ToArray());
             }
         }
 
@@ -167,6 +194,10 @@ namespace ScenePort.McpBridge.Editor
             context.Response.ContentLength64 = bytes.Length;
             context.Response.OutputStream.Write(bytes, 0, bytes.Length);
             context.Response.OutputStream.Close();
+        }
+
+        private sealed class RequestBodyTooLargeException : Exception
+        {
         }
     }
 }

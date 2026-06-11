@@ -103,7 +103,9 @@ jobs:
 
       - name: Check generated placeholders
         run: |
-          if grep -R "\[TODO:" -n . --exclude-dir=.git --exclude-dir=node_modules; then
+          # Scan generated/doc content for unfilled placeholders. Exclude .github so this
+          # grep does not match its own pattern in the workflow file.
+          if grep -R "\[TODO:" -n . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.github; then
             echo "Found TODO placeholders"
             exit 1
           fi

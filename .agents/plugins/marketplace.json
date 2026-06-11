@@ -1,0 +1,20 @@
+{
+  "name": "sceneport-local",
+  "interface": {
+    "displayName": "ScenePort Local"
+  },
+  "plugins": [
+    {
+      "name": "sceneport",
+      "source": {
+        "source": "local",
+        "path": "./plugins/sceneport"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "io.sceneport.mcpbridge",
+  "version": "0.2.0",
+  "displayName": "ScenePort MCP Bridge",
+  "description": "A safe localhost bridge that exposes Unity Editor state and reversible editor actions to the ScenePort MCP server.",
+  "unity": "2022.3",
+  "author": {
+    "name": "ScenePort Maintainers",
+    "url": "https://github.com/Ludaxis/ScenePort"
+  },
+  "keywords": ["mcp", "ai", "editor", "codex", "claude"],
+  "dependencies": {
+    "com.unity.test-framework": "1.4.0"
+  },
+  "license": "MIT"
+}

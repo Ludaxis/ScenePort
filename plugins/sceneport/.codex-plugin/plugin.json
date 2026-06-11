@@ -1,0 +1,34 @@
+{
+  "name": "sceneport",
+  "version": "0.2.0",
+  "description": "Safe Unity Editor MCP bridge for Codex and other MCP clients.",
+  "author": {
+    "name": "ScenePort Maintainers",
+    "url": "https://github.com/Ludaxis/ScenePort"
+  },
+  "homepage": "https://github.com/Ludaxis/ScenePort",
+  "repository": "https://github.com/Ludaxis/ScenePort",
+  "license": "MIT",
+  "keywords": ["unity", "mcp", "codex", "game-dev", "editor-tools"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "ScenePort",
+    "shortDescription": "Safe MCP bridge into the Unity Editor.",
+    "longDescription": "ScenePort lets Codex inspect and safely operate a live Unity Editor through MCP tools for scene hierarchy, selection, console logs, GameObject creation, transform edits, components, serialized properties, assets, tests, play mode, screenshots, resources, and prompts.",
+    "developerName": "ScenePort Maintainers",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/Ludaxis/ScenePort",
+    "privacyPolicyURL": "https://github.com/Ludaxis/ScenePort/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/Ludaxis/ScenePort/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Inspect my active Unity scene.",
+      "Read Unity console errors.",
+      "Search Unity assets.",
+      "Run EditMode tests.",
+      "Create a GameObject safely."
+    ],
+    "brandColor": "#2A7FFF"
+  }
+}

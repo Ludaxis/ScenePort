@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a ScenePort capability.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What Unity workflow should ScenePort make easier or safer?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What should the MCP tool, resource, prompt, or bridge behavior do?
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety considerations
+      description: What could go wrong, and how should ScenePort guard against it?

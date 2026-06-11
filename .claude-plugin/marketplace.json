@@ -1,0 +1,24 @@
+{
+  "name": "sceneport",
+  "owner": {
+    "name": "ScenePort Maintainers"
+  },
+  "description": "Open-source MCP tools for safely connecting AI coding agents to the Unity Editor.",
+  "plugins": [
+    {
+      "name": "sceneport",
+      "displayName": "ScenePort",
+      "source": "./plugins/sceneport",
+      "description": "Safe Unity Editor MCP bridge for Codex, Claude Code, and other MCP clients.",
+      "version": "0.2.0",
+      "author": {
+        "name": "ScenePort Maintainers"
+      },
+      "homepage": "https://github.com/Ludaxis/ScenePort",
+      "repository": "https://github.com/Ludaxis/ScenePort",
+      "license": "MIT",
+      "category": "Developer Tools",
+      "tags": ["unity", "mcp", "codex", "claude-code", "game-dev"]
+    }
+  ]
+}

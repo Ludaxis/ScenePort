@@ -1,0 +1,29 @@
+{
+  "name": "@sceneport/mcp-server",
+  "version": "0.2.0",
+  "description": "MCP stdio server for the ScenePort Unity Editor bridge.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "sceneport-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "start": "node build/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

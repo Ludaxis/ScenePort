@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sceneport": {
+      "command": "node",
+      "args": ["./server/build/index.js"],
+      "env": {
+        "SCENEPORT_UNITY_URL": "http://127.0.0.1:38987"
+      },
+      "timeout": 600000
+    }
+  }
+}

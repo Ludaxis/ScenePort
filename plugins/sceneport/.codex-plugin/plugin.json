@@ -3,8 +3,8 @@
   "version": "0.4.0",
   "description": "Safe Unity Editor MCP bridge for Codex and other MCP clients.",
   "author": {
-    "name": "ScenePort Maintainers",
-    "url": "https://github.com/Ludaxis/ScenePort"
+    "name": "Ludaxis.io",
+    "url": "https://ludaxis.io"
   },
   "homepage": "https://github.com/Ludaxis/ScenePort",
   "repository": "https://github.com/Ludaxis/ScenePort",
@@ -22,14 +22,14 @@
     "displayName": "ScenePort",
     "shortDescription": "Safe MCP bridge into the Unity Editor.",
     "longDescription": "ScenePort lets Codex inspect, safely operate, and playtest a live Unity Editor through MCP tools for scene hierarchy, selection, console logs, GameObject creation, transform edits, components, serialized properties, assets, tests, play mode, screenshots, playtest reports, resources, and prompts.",
-    "developerName": "ScenePort Maintainers",
+    "developerName": "Ludaxis.io",
     "category": "Developer Tools",
     "capabilities": [
       "Interactive",
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/Ludaxis/ScenePort",
+    "websiteURL": "https://ludaxis.io",
     "privacyPolicyURL": "https://github.com/Ludaxis/ScenePort/blob/main/PRIVACY.md",
     "termsOfServiceURL": "https://github.com/Ludaxis/ScenePort/blob/main/LICENSE",
     "defaultPrompt": [

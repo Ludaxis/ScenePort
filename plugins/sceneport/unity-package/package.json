@@ -5,8 +5,8 @@
   "description": "A safe localhost bridge that exposes Unity Editor state and reversible editor actions to the ScenePort MCP server.",
   "unity": "2022.3",
   "author": {
-    "name": "ScenePort Maintainers",
-    "url": "https://github.com/Ludaxis/ScenePort"
+    "name": "Ludaxis.io",
+    "url": "https://ludaxis.io"
   },
   "keywords": [
     "mcp",

@@ -50,11 +50,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "unity_status",
     {
       title: "Unity Bridge Status",
-      description: "Check whether the ScenePort Unity Editor bridge is reachable.",
+      description: "Check whether the ScenePort Unity Editor bridge is reachable, which Unity project it is bound to, and how it was discovered.",
       inputSchema: {},
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    toolGet("/health"),
+    async () => {
+      try {
+        return jsonResult(await client.statusReport());
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   );
 
   server.registerTool(
@@ -179,6 +185,7 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         rotation: vector3Schema.optional().describe("Optional local Euler rotation."),
         scale: vector3Schema.optional().describe("Optional local scale."),
       },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ instanceId, position, rotation, scale }) => {
       try {
@@ -221,6 +228,7 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         value: serializedValueSchema.describe("String, number, boolean, vector, or color value to write."),
         objectReferenceAssetPath: z.string().min(1).max(1024).optional().describe("Asset path for ObjectReference properties."),
       },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ instanceId, componentType, componentIndex, propertyPath, value, objectReferenceAssetPath }) => {
       try {
@@ -320,7 +328,8 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         fileName: z.string().min(1).max(128).optional(),
         superSize: z.number().int().min(1).max(4).default(1).optional(),
       },
-      annotations: { readOnlyHint: true },
+      // Writes a PNG file, so this is not read-only.
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ fileName, superSize }) => {
       try {
@@ -337,6 +346,7 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       title: "Enter Unity Play Mode",
       description: "Request Unity Editor play mode.",
       inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async () => {
       try {
@@ -353,6 +363,7 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       title: "Exit Unity Play Mode",
       description: "Request Unity Editor to leave play mode.",
       inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async () => {
       try {

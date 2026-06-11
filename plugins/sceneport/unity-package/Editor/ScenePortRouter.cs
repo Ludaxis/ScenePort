@@ -13,6 +13,7 @@ namespace ScenePort.McpBridge.Editor
         internal int BoundPort;
         internal string Version = "unknown";
         internal bool TokenRequired;
+        internal string Token;
     }
 
     /// <summary>

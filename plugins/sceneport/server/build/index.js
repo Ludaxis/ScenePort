@@ -2980,7 +2980,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve.call(this, root, ref);
+      let _sch = resolve2.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3007,7 +3007,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve(root, ref) {
+    function resolve2(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3638,7 +3638,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve(baseURI, relativeURI, options) {
+    function resolve2(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3896,7 +3896,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve,
+      resolve: resolve2,
       resolveComponent,
       equal,
       serialize,
@@ -12995,44 +12995,218 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve();
+        resolve2();
       } else {
-        this._stdout.once("drain", resolve);
+        this._stdout.once("drain", resolve2);
       }
     });
   }
 };
 
+// src/discovery.ts
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve, dirname } from "node:path";
+var DEFAULT_URL = "http://127.0.0.1:38987";
+var MAX_WALK_DEPTH = 10;
+function discoveryFilePath(projectPath) {
+  return join(projectPath, "Library", "ScenePort", "bridge.json");
+}
+function readBridgeFile(projectPath) {
+  try {
+    const path = discoveryFilePath(projectPath);
+    if (!existsSync(path)) {
+      return null;
+    }
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function looksLikeUnityProject(dir) {
+  return existsSync(join(dir, "Assets")) && existsSync(join(dir, "ProjectSettings")) && existsSync(discoveryFilePath(dir));
+}
+function walkForProject(start) {
+  let dir = start;
+  for (let i = 0; i < MAX_WALK_DEPTH; i++) {
+    if (looksLikeUnityProject(dir)) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  return null;
+}
+function normalizeUrl(url) {
+  return url.replace(/\/$/, "");
+}
+function discoverBridge(env = process.env, cwd = process.cwd()) {
+  const explicitUrl = env.SCENEPORT_UNITY_URL;
+  const explicitToken = env.SCENEPORT_TOKEN;
+  const projectPathEnv = env.SCENEPORT_PROJECT_PATH;
+  let file = null;
+  let fileProject = null;
+  if (projectPathEnv) {
+    file = readBridgeFile(projectPathEnv);
+    if (file) {
+      fileProject = projectPathEnv;
+    }
+  }
+  if (!file) {
+    const walked = walkForProject(cwd);
+    if (walked) {
+      file = readBridgeFile(walked);
+      fileProject = walked;
+    }
+  }
+  if (explicitUrl) {
+    return {
+      baseUrl: normalizeUrl(explicitUrl),
+      token: explicitToken ?? file?.token,
+      projectPath: file?.projectPath ?? projectPathEnv,
+      source: "env-url",
+      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0
+    };
+  }
+  if (file?.url) {
+    return {
+      baseUrl: normalizeUrl(file.url),
+      token: explicitToken ?? file.token,
+      projectPath: file.projectPath ?? fileProject ?? void 0,
+      source: projectPathEnv && fileProject === projectPathEnv ? "discovery-file" : "cwd-walk",
+      discoveryFilePath: fileProject ? discoveryFilePath(fileProject) : void 0
+    };
+  }
+  return {
+    baseUrl: DEFAULT_URL,
+    token: explicitToken,
+    source: "default"
+  };
+}
+function projectPathsEqual(a, b) {
+  if (!a || !b) {
+    return false;
+  }
+  const na = resolve(a);
+  const nb = resolve(b);
+  if (process.platform === "darwin" || process.platform === "win32") {
+    return na.toLowerCase() === nb.toLowerCase();
+  }
+  return na === nb;
+}
+
 // src/unityClient.ts
+var TOKEN_HEADER = "X-ScenePort-Token";
 var UnityBridgeClient = class {
-  baseUrl;
-  constructor(baseUrl = process.env.SCENEPORT_UNITY_URL ?? "http://127.0.0.1:38987") {
-    this.baseUrl = baseUrl.replace(/\/$/, "");
+  target;
+  expectedProjectPath;
+  identityResolved = false;
+  identityError = null;
+  constructor(target, env = process.env) {
+    if (typeof target === "string") {
+      const discovered = discoverBridge(env);
+      this.target = { ...discovered, baseUrl: target.replace(/\/$/, ""), source: "env-url" };
+    } else {
+      this.target = target ?? discoverBridge(env);
+    }
+    this.expectedProjectPath = env.SCENEPORT_PROJECT_PATH;
+  }
+  get baseUrl() {
+    return this.target.baseUrl;
   }
   async get(path, params = {}) {
-    const url = this.url(path, params);
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" }
-    });
-    return this.parse(response);
+    await this.guardIdentity();
+    return this.request("GET", path, params);
   }
   async post(path, body) {
-    const response = await fetch(this.url(path), {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
+    await this.guardIdentity();
+    return this.request("POST", path, void 0, body);
+  }
+  /**
+   * Health plus discovery/identity metadata for unity_status. Never throws on identity
+   * mismatch — it reports it, so the tool can be used to diagnose a wrong-project connection.
+   */
+  async statusReport() {
+    let health = {};
+    let error2;
+    try {
+      const result = await this.request("GET", "/health");
+      if (result && typeof result === "object") {
+        health = result;
+      }
+    } catch (e) {
+      error2 = e instanceof Error ? e.message : String(e);
+    }
+    const actualPath = typeof health.projectPath === "string" ? health.projectPath : void 0;
+    const identityMatch = this.expectedProjectPath ? projectPathsEqual(actualPath, this.expectedProjectPath) : null;
+    const legacyBridge = health.projectId === void 0 && !error2;
+    return {
+      ...health,
+      ...error2 ? { status: "error", error: error2 } : {},
+      discoverySource: this.target.source,
+      discoveryFilePath: this.target.discoveryFilePath ?? null,
+      tokenConfigured: Boolean(this.target.token),
+      identityMatch,
+      ...legacyBridge ? { warning: "Unity bridge is outdated (pre-0.3); update the ScenePort UPM package to enable auth and discovery." } : {}
+    };
+  }
+  async guardIdentity() {
+    if (!this.expectedProjectPath) {
+      return;
+    }
+    if (!this.identityResolved) {
+      try {
+        const health = await this.request("GET", "/health");
+        const actual = typeof health?.projectPath === "string" ? health.projectPath : void 0;
+        if (actual && !projectPathsEqual(actual, this.expectedProjectPath)) {
+          this.identityError = `ScenePort is connected to Unity project '${actual}' but SCENEPORT_PROJECT_PATH expects '${this.expectedProjectPath}'. Another Unity instance probably owns this port. Close it, or point SCENEPORT_UNITY_URL at the correct bridge (see Library/ScenePort/bridge.json in the expected project).`;
+        }
+        this.identityResolved = true;
+      } catch {
+      }
+    }
+    if (this.identityError) {
+      throw new Error(this.identityError);
+    }
+  }
+  async request(method, path, params = {}, body, isRetry = false) {
+    const url = this.url(path, params);
+    const headers = { Accept: "application/json" };
+    if (this.target.token) {
+      headers[TOKEN_HEADER] = this.target.token;
+    }
+    let response;
+    try {
+      response = method === "GET" ? await fetch(url, { method, headers }) : await fetch(url, {
+        method,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch (error2) {
+      if (!isRetry && this.target.source !== "env-url" && this.rediscover()) {
+        return this.request(method, path, params, body, true);
+      }
+      throw error2;
+    }
+    if (response.status === 401 && !isRetry && this.rediscover()) {
+      return this.request(method, path, params, body, true);
+    }
     return this.parse(response);
   }
+  rediscover() {
+    const next = discoverBridge();
+    const changed = next.baseUrl !== this.target.baseUrl || next.token !== this.target.token;
+    this.target = next;
+    return changed;
+  }
   url(path, params = {}) {
-    const url = new URL(path, this.baseUrl);
+    const url = new URL(path, this.target.baseUrl);
     for (const [key, value] of Object.entries(params)) {
       if (value !== void 0) {
         url.searchParams.set(key, String(value));
@@ -19120,7 +19294,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -19137,7 +19311,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19215,7 +19389,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve(parseResult.data);
+            resolve2(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19476,12 +19650,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve, interval);
+      const timeoutId = setTimeout(resolve2, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20803,7 +20977,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -21508,11 +21682,17 @@ function createScenePortServer(client) {
     "unity_status",
     {
       title: "Unity Bridge Status",
-      description: "Check whether the ScenePort Unity Editor bridge is reachable.",
+      description: "Check whether the ScenePort Unity Editor bridge is reachable, which Unity project it is bound to, and how it was discovered.",
       inputSchema: {},
-      annotations: { readOnlyHint: true }
+      annotations: { readOnlyHint: true, openWorldHint: false }
     },
-    toolGet("/health")
+    async () => {
+      try {
+        return jsonResult(await client.statusReport());
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
   );
   server.registerTool(
     "unity_scene_hierarchy",
@@ -21629,7 +21809,8 @@ function createScenePortServer(client) {
         position: vector3Schema.optional().describe("Optional local position."),
         rotation: vector3Schema.optional().describe("Optional local Euler rotation."),
         scale: vector3Schema.optional().describe("Optional local scale.")
-      }
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     async ({ instanceId, position, rotation, scale }) => {
       try {
@@ -21669,7 +21850,8 @@ function createScenePortServer(client) {
         propertyPath: external_exports.string().min(1).max(512).describe("SerializedProperty path such as m_Name or m_LocalPosition.x."),
         value: serializedValueSchema.describe("String, number, boolean, vector, or color value to write."),
         objectReferenceAssetPath: external_exports.string().min(1).max(1024).optional().describe("Asset path for ObjectReference properties.")
-      }
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     async ({ instanceId, componentType, componentIndex, propertyPath, value, objectReferenceAssetPath }) => {
       try {
@@ -21761,7 +21943,8 @@ function createScenePortServer(client) {
         fileName: external_exports.string().min(1).max(128).optional(),
         superSize: external_exports.number().int().min(1).max(4).default(1).optional()
       },
-      annotations: { readOnlyHint: true }
+      // Writes a PNG file, so this is not read-only.
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
     async ({ fileName, superSize }) => {
       try {
@@ -21776,7 +21959,8 @@ function createScenePortServer(client) {
     {
       title: "Enter Unity Play Mode",
       description: "Request Unity Editor play mode.",
-      inputSchema: {}
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     async () => {
       try {
@@ -21791,7 +21975,8 @@ function createScenePortServer(client) {
     {
       title: "Exit Unity Play Mode",
       description: "Request Unity Editor to leave play mode.",
-      inputSchema: {}
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     async () => {
       try {

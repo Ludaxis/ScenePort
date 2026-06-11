@@ -20,6 +20,7 @@ namespace ScenePort.McpBridge.Editor
         public const int MaxPort = 38996;
 
         private const int MainThreadTimeoutSeconds = 30;
+        private const string AuthDisabledKey = "ScenePort.RequireAuthToken.Disabled";
 
         private static readonly object QueueLock = new object();
         private static readonly Queue<WorkItem> WorkQueue = new Queue<WorkItem>();
@@ -40,8 +41,10 @@ namespace ScenePort.McpBridge.Editor
         {
             mainThreadId = Thread.CurrentThread.ManagedThreadId;
             Context.Version = ResolveVersion();
+            RequestGate = request => ScenePortRequestGate.EvaluateRequest(request, Context);
             EditorApplication.update += Pump;
             AssemblyReloadEvents.beforeAssemblyReload += Stop;
+            EditorApplication.quitting += OnQuitting;
             Application.logMessageReceived += CaptureLog;
             TestRunHandlers.RegisterCallbacks();
             Start();
@@ -49,6 +52,8 @@ namespace ScenePort.McpBridge.Editor
 
         internal static int BoundPort => Context.BoundPort;
         internal static bool IsRunning => server != null && server.IsRunning;
+        internal static string CurrentToken => Context.Token;
+        internal static bool AuthRequired => Context.TokenRequired;
 
         [MenuItem("Tools/ScenePort/Start Bridge")]
         public static void Start()
@@ -58,6 +63,14 @@ namespace ScenePort.McpBridge.Editor
                 return;
             }
 
+            var projectPath = ScenePortPaths.ProjectPath();
+            if (string.IsNullOrEmpty(Context.Token))
+            {
+                Context.Token = ScenePortDiscoveryFile.TryReadToken(projectPath) ?? ScenePortAuth.GenerateToken();
+            }
+
+            Context.TokenRequired = IsAuthRequired();
+
             for (var port = DefaultPort; port <= MaxPort; port++)
             {
                 var candidate = new ScenePortHttpServer(port, Router, ExecuteOnMainThread, RequestGate);
@@ -66,6 +79,7 @@ namespace ScenePort.McpBridge.Editor
                     candidate.Start();
                     server = candidate;
                     Context.BoundPort = port;
+                    WriteDiscoveryFile(projectPath, port);
                     Debug.Log("ScenePort bridge listening at http://127.0.0.1:" + port);
                     return;
                 }
@@ -110,6 +124,55 @@ namespace ScenePort.McpBridge.Editor
         {
             EditorGUIUtility.systemCopyBuffer = "http://127.0.0.1:" + Context.BoundPort;
             Debug.Log("ScenePort bridge URL copied to clipboard.");
+        }
+
+        [MenuItem("Tools/ScenePort/Require Auth Token", false, 100)]
+        public static void ToggleRequireAuth()
+        {
+            var disabled = EditorUserSettings.GetConfigValue(AuthDisabledKey) == "true";
+            EditorUserSettings.SetConfigValue(AuthDisabledKey, disabled ? "false" : "true");
+            Context.TokenRequired = IsAuthRequired();
+            WriteDiscoveryFile(ScenePortPaths.ProjectPath(), Context.BoundPort);
+            Debug.Log("ScenePort auth token requirement: " + (Context.TokenRequired ? "ON" : "OFF"));
+        }
+
+        [MenuItem("Tools/ScenePort/Require Auth Token", true)]
+        public static bool ToggleRequireAuthValidate()
+        {
+            Menu.SetChecked("Tools/ScenePort/Require Auth Token", IsAuthRequired());
+            return true;
+        }
+
+        private static bool IsAuthRequired()
+        {
+            return EditorUserSettings.GetConfigValue(AuthDisabledKey) != "true";
+        }
+
+        private static void WriteDiscoveryFile(string projectPath, int port)
+        {
+            if (port <= 0)
+            {
+                return;
+            }
+
+            ScenePortDiscoveryFile.Write(projectPath, new ScenePortDiscoveryFile.BridgeInfo
+            {
+                bridgeVersion = Context.Version,
+                url = "http://127.0.0.1:" + port,
+                port = port,
+                token = Context.Token,
+                projectPath = projectPath,
+                projectId = PlayerSettings.productGUID.ToString("N"),
+                projectName = Application.productName,
+                unityVersion = Application.unityVersion,
+                processId = System.Diagnostics.Process.GetCurrentProcess().Id,
+                startedUtc = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
+            });
+        }
+
+        private static void OnQuitting()
+        {
+            ScenePortDiscoveryFile.Delete(ScenePortPaths.ProjectPath());
         }
 
         private static string ExecuteOnMainThread(Func<string> action)

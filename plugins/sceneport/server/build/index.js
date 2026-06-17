@@ -13531,7 +13531,7 @@ function categoryForStatus(status) {
 }
 
 // src/version.ts
-var VERSION = "0.9.0";
+var VERSION = "0.9.1";
 
 // src/doctor.ts
 function check2(name, status, detail) {

@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -766,7 +765,7 @@ namespace ScenePort.McpBridge.Editor
             // 1) Installed package: ask the Package Manager for the resolved on-disk path.
             try
             {
-                var pkg = PackageInfo.FindForAssembly(typeof(ScenePortSetupWindow).Assembly);
+                var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(ScenePortSetupWindow).Assembly);
                 if (pkg != null && !string.IsNullOrEmpty(pkg.resolvedPath))
                 {
                     var candidate = Path.Combine(pkg.resolvedPath, "Server~", "index.js");

@@ -377,6 +377,11 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("path")] public string Path;
         [JsonProperty("superSize")] public int SuperSize;
         [JsonProperty("note")] public string Note;
+
+        // Inline image content (v0.9). Null unless the request asked for an inline capture.
+        [JsonProperty("imageBase64", NullValueHandling = NullValueHandling.Ignore)] public string ImageBase64;
+        [JsonProperty("width", NullValueHandling = NullValueHandling.Ignore)] public int? Width;
+        [JsonProperty("height", NullValueHandling = NullValueHandling.Ignore)] public int? Height;
     }
 
     internal sealed class SceneViewResponse

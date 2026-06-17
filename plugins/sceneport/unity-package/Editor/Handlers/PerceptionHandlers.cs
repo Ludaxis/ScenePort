@@ -158,6 +158,8 @@ namespace ScenePort.McpBridge.Editor
 
             var width = Mathf.Clamp(req.ExtractInt("width", req.GetInt("width", 1024)), 64, 4096);
             var height = Mathf.Clamp(req.ExtractInt("height", req.GetInt("height", 768)), 64, 4096);
+            var inline = req.ExtractBool("inline", req.GetBool("inline", true));
+            var maxEdge = Mathf.Clamp(req.ExtractInt("maxEdge", req.GetInt("maxEdge", 1024)), 64, 4096);
             var fileName = req.ExtractString("fileName", req.GetString("fileName", null));
             if (string.IsNullOrEmpty(fileName))
             {
@@ -175,6 +177,7 @@ namespace ScenePort.McpBridge.Editor
             var previousTarget = sceneView.camera.targetTexture;
             var renderTexture = new RenderTexture(width, height, 24);
             var texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+            var response = new CaptureGameViewResponse { Path = path, SuperSize = 1, Note = "Captured active Scene view camera." };
             try
             {
                 sceneView.camera.targetTexture = renderTexture;
@@ -183,6 +186,17 @@ namespace ScenePort.McpBridge.Editor
                 texture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
                 texture.Apply();
                 File.WriteAllBytes(path, texture.EncodeToPNG());
+
+                if (inline)
+                {
+                    var encoded = ScenePortImage.EncodeBase64(texture, maxEdge);
+                    if (!string.IsNullOrEmpty(encoded.Base64))
+                    {
+                        response.ImageBase64 = encoded.Base64;
+                        response.Width = encoded.Width;
+                        response.Height = encoded.Height;
+                    }
+                }
             }
             finally
             {
@@ -193,7 +207,7 @@ namespace ScenePort.McpBridge.Editor
                 UnityEngine.Object.DestroyImmediate(texture);
             }
 
-            return new CaptureGameViewResponse { Path = path, SuperSize = 1, Note = "Captured active Scene view camera." };
+            return response;
         }
 
         internal static object RuntimeStatus(ScenePortRequest req, ScenePortContext ctx)

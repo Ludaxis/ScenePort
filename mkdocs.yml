@@ -1,0 +1,73 @@
+site_name: ScenePort
+site_description: The safe MCP port into the Unity Editor for AI coding agents.
+site_url: https://Ludaxis.github.io/ScenePort/
+repo_url: https://github.com/Ludaxis/ScenePort
+repo_name: Ludaxis/ScenePort
+edit_uri: edit/main/docs/
+
+# Markdown sources live under docs/. All nav paths below are relative to this docs_dir.
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
+
+nav:
+  - Home: index.md
+  - Setup: setup.md
+  - Recipes:
+      - Overview: recipes/README.md
+      - Perception:
+          - Explain scene: recipes/explain-scene.md
+          - Inspect scene: recipes/inspect-scene.md
+      - Authoring:
+          - UI from screenshot: recipes/create-ui-from-screenshot.md
+          - Create prefab: recipes/create-prefab.md
+      - Testing and playtest:
+          - Visual regression: recipes/visual-regression.md
+          - Write PlayMode test: recipes/write-playmode-test.md
+          - Playtest pilot: recipes/playtest-pilot.md
+          - Team readiness smoke: recipes/team-readiness-smoke.md
+      - Diagnostics:
+          - Self-heal: recipes/self-heal.md
+          - Fix console errors: recipes/fix-console-errors.md
+          - Debug play mode: recipes/debug-play-mode.md
+          - Prepare build: recipes/prepare-build.md
+  - Architecture: architecture/ARCHITECTURE.md
+  - Security Model: security/SECURITY_MODEL.md
+  - Roadmap: roadmap/ROADMAP.md
+  - Troubleshooting: playbooks/TROUBLESHOOTING.md
+  - More docs:
+      - Product Brief: product/PRODUCT_BRIEF.md
+      - Team Charter: product/TEAM_CHARTER.md
+      - QA Plan: qa/QA_PLAN.md
+      - Observability: data/OBSERVABILITY.md
+      - Team Readiness Demo: demo/TEAM_READINESS_DEMO.md
+      - Hero Storyboard: demo/HERO_STORYBOARD.md
+      - Team Adoption: playbooks/TEAM_ADOPTION.md
+      - Security Operations: playbooks/SECURITY_OPERATIONS.md
+      - CI and Release: playbooks/CI_RELEASE.md

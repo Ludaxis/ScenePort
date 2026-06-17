@@ -1,7 +1,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { encodeSerializedValue, joinCsv, objectLocatorSchema, serializedValueSchema, vector3Schema } from "./encoding.js";
-import { errorResult, jsonResult } from "./toolResult.js";
+import { errorResult, imageResult, jsonResult } from "./toolResult.js";
 import type { UnityBridgeClient } from "./unityClient.js";
 import { VERSION } from "./version.js";
 
@@ -35,6 +35,28 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         return errorResult(error);
       }
     };
+  }
+
+  // Shared inline-capture inputs: ask the bridge to return a base64 PNG so vision models can see it.
+  const inlineCaptureSchema = {
+    inline: z.boolean().default(true).optional().describe("Return the captured image inline so the model can see it."),
+    maxEdge: z
+      .number()
+      .int()
+      .min(64)
+      .max(4096)
+      .default(1024)
+      .optional()
+      .describe("Downscale the captured image's longest edge to this many pixels to keep the payload small."),
+  };
+
+  // Capture responses optionally carry a base64 PNG; return it as an MCP image block when present.
+  function captureResult(response: unknown) {
+    const imageBase64 = response !== null && typeof response === "object" ? (response as { imageBase64?: unknown }).imageBase64 : undefined;
+    if (typeof imageBase64 === "string" && imageBase64.length > 0) {
+      return imageResult(response, imageBase64);
+    }
+    return jsonResult(response);
   }
 
   function jsonResource(uri: URL | string, payload: unknown) {
@@ -339,13 +361,14 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       inputSchema: {
         fileName: z.string().min(1).max(128).optional(),
         superSize: z.number().int().min(1).max(4).default(1).optional(),
+        ...inlineCaptureSchema,
       },
       // Writes a PNG file, so this is not read-only.
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ fileName, superSize }) => {
+    async ({ fileName, superSize, inline, maxEdge }) => {
       try {
-        return jsonResult(await client.post("/capture-game-view", { fileName, superSize }));
+        return captureResult(await client.post("/capture-game-view", { fileName, superSize, inline, maxEdge }));
       } catch (error) {
         return errorResult(error);
       }
@@ -530,12 +553,13 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       inputSchema: {
         fileName: z.string().min(1).max(128).optional(),
         superSize: z.number().int().min(1).max(4).default(1).optional(),
+        ...inlineCaptureSchema,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ fileName, superSize }) => {
+    async ({ fileName, superSize, inline, maxEdge }) => {
       try {
-        return jsonResult(await client.post("/playtest/capture-frame", { fileName, superSize }));
+        return captureResult(await client.post("/playtest/capture-frame", { fileName, superSize, inline, maxEdge }));
       } catch (error) {
         return errorResult(error);
       }
@@ -646,10 +670,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         fileName: z.string().min(1).max(128).optional(),
         width: z.number().int().min(64).max(4096).default(1024).optional(),
         height: z.number().int().min(64).max(4096).default(768).optional(),
+        ...inlineCaptureSchema,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    toolPost("/capture-scene-view"),
+    async ({ fileName, width, height, inline, maxEdge }) => {
+      try {
+        return captureResult(await client.post("/capture-scene-view", { fileName, width, height, inline, maxEdge }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   );
 
   server.registerTool(
@@ -838,10 +869,17 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         baselineId: z.string().min(1).max(128).default("default").optional(),
         fileName: z.string().min(1).max(128).optional(),
         superSize: z.number().int().min(1).max(4).default(1).optional(),
+        ...inlineCaptureSchema,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    toolPost("/golden-frame/capture"),
+    async ({ baselineId, fileName, superSize, inline, maxEdge }) => {
+      try {
+        return captureResult(await client.post("/golden-frame/capture", { baselineId, fileName, superSize, inline, maxEdge }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   );
 
   server.registerTool(
@@ -852,10 +890,19 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       inputSchema: {
         baselinePath: z.string().min(1).max(2048),
         actualPath: z.string().min(1).max(2048),
+        threshold: z.number().min(0).max(1).default(0.02).optional(),
+        passThreshold: z.number().min(0).max(100).default(0).optional(),
+        maxEdge: z.number().int().min(64).max(4096).default(1024).optional(),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    toolPost("/golden-frame/compare"),
+    async ({ baselinePath, actualPath, threshold, passThreshold, maxEdge }) => {
+      try {
+        return captureResult(await client.post("/golden-frame/compare", { baselinePath, actualPath, threshold, passThreshold, maxEdge }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   );
 
   server.registerTool(
@@ -1394,7 +1441,7 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "sceneport:create-ui-from-screenshot",
     "Create UI From Screenshot",
     "Analyze a screenshot and map it to Unity UI objects.",
-    "Capture or inspect the Unity Game view, compare it with the supplied screenshot or design intent, then identify the Canvas objects, assets, layout, and serialized property edits needed to reproduce the UI safely.",
+    "Call unity_capture_game_view with inline:true so you can SEE the current Unity Game view, then compare it pixel-for-pixel against the supplied screenshot or design intent. Identify the Canvas objects, assets, layout, and serialized property edits needed to reproduce the target UI, apply them with typed ScenePort tools (create_game_object, add_component, set_serialized_property), and re-capture the Game view to visually confirm the result matches before finishing.",
   );
 
   registerPrompt(
@@ -1430,6 +1477,27 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "Team Readiness Smoke",
     "Run the v0.5 readiness loop for a Unity project.",
     "Use ScenePort to run a team-readiness smoke: call unity_status, inspect scene hierarchy and selection, read console errors, run relevant EditMode tests, start a short playtest with one capture when safe, read the audit log, and return blockers plus exact follow-up tasks.",
+  );
+
+  registerPrompt(
+    "sceneport:self-heal",
+    "Self-Heal Play Mode Loop",
+    "Autonomously enter play mode, observe, fix the top issue, and re-verify.",
+    "Run an autonomous repair loop with ScenePort: check compilation status and console logs, enter play mode, capture the Game view with inline:true so you can SEE what the player sees, and stream the console. Diagnose the single highest-impact runtime problem (error, exception, broken visual, or stuck state). Exit play mode, apply the smallest safe fix through typed ScenePort tools or a focused code edit, then re-enter play mode and re-capture to confirm the issue is resolved. Repeat until the captured frame and console are clean or you hit a blocker you must report. Keep every change reversible and summarize what you healed.",
+  );
+
+  registerPrompt(
+    "sceneport:visual-regression",
+    "Visual Regression Check",
+    "Capture a golden baseline, then detect and explain visual changes.",
+    "Use ScenePort for visual regression: if no baseline exists, call unity_capture_golden_frame to record one and stop. Otherwise capture the current frame, then call unity_compare_golden_frame (tune threshold/passThreshold as needed) and LOOK at the returned diff image — red regions mark changed pixels. Report pixelDiffPercent, where the changes are (changedBox), whether they are intended or a regression, and the likely cause in the scene/assets. Only approve a new baseline when the change is intentional.",
+  );
+
+  registerPrompt(
+    "sceneport:explain-scene",
+    "Explain This Scene",
+    "Answer how the scene works using hierarchy and asset relationships.",
+    "Use ScenePort to explain how the active Unity scene works: read unity_scene_hierarchy and unity_selection, inspect key GameObjects and their components, and walk unity_asset_graph to trace which scripts, prefabs, and assets reference each other. Answer the user's question about responsibilities and data flow (e.g. 'what spawns enemies?', 'what references the player?') by grounding every claim in concrete objects and components you inspected, and flag anything ambiguous or risky you noticed.",
   );
 
   return server;

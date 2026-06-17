@@ -87,8 +87,20 @@ namespace ScenePort.McpBridge.Editor
             var fileName = SafeId(req.ExtractString("fileName", "actual")) + ".png";
             var directory = ArtifactDirectory("golden", baselineId);
             Directory.CreateDirectory(directory);
-            var source = EditorStateHandlers.CaptureGameViewFile(fileName, req.ExtractInt("superSize", 1));
-            return new { status = "ok", baselineId, actualPath = source.Path, directory, note = source.Note };
+            var inline = req.ExtractBool("inline", req.GetBool("inline", true));
+            var maxEdge = Mathf.Clamp(req.ExtractInt("maxEdge", req.GetInt("maxEdge", 1024)), 64, 4096);
+            var source = EditorStateHandlers.CaptureGameViewFile(fileName, req.ExtractInt("superSize", 1), inline, maxEdge);
+            return new
+            {
+                status = "ok",
+                baselineId,
+                actualPath = source.Path,
+                directory,
+                note = source.Note,
+                imageBase64 = source.ImageBase64,
+                width = source.Width,
+                height = source.Height,
+            };
         }
 
         internal static object GoldenCompare(ScenePortRequest req, ScenePortContext ctx)
@@ -99,17 +111,128 @@ namespace ScenePort.McpBridge.Editor
             {
                 return new ErrorResponse("request.invalid", "baselinePath and actualPath are required.", "request", false);
             }
-
-            var exists = File.Exists(baselinePath) && File.Exists(actualPath);
-            var baselineBytes = exists ? new FileInfo(baselinePath).Length : 0;
-            var actualBytes = exists ? new FileInfo(actualPath).Length : 0;
-            var passed = exists && baselineBytes == actualBytes;
-            return new
+            if (!File.Exists(baselinePath) || !File.Exists(actualPath))
             {
-                status = "ok",
-                passed,
-                metrics = new { filesExist = exists, baselineBytes, actualBytes, byteDelta = Math.Abs(baselineBytes - actualBytes) },
-            };
+                return new ErrorResponse("request.invalid", "baselinePath and actualPath must reference existing files.", "request", false);
+            }
+
+            // Per-channel tolerance (0..1) above which a channel counts as changed.
+            var threshold = Mathf.Clamp01(req.ExtractFloat("threshold", 0.02f));
+            // Max percent of changed pixels still allowed to "pass".
+            var passThreshold = Mathf.Clamp(req.ExtractFloat("passThreshold", 0f), 0f, 100f);
+            var maxEdge = Mathf.Clamp(req.ExtractInt("maxEdge", req.GetInt("maxEdge", 1024)), 64, 4096);
+
+            var baseline = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            var actual = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            Texture2D diff = null;
+            try
+            {
+                ImageConversion.LoadImage(baseline, File.ReadAllBytes(baselinePath));
+                ImageConversion.LoadImage(actual, File.ReadAllBytes(actualPath));
+
+                var dimensionsMatch = baseline.width == actual.width && baseline.height == actual.height;
+                // Compare over the overlapping region so a size mismatch still yields a best-effort diff.
+                var width = Mathf.Min(baseline.width, actual.width);
+                var height = Mathf.Min(baseline.height, actual.height);
+
+                var basePixels = baseline.GetPixels32();
+                var actPixels = actual.GetPixels32();
+                var tolerance = Mathf.RoundToInt(threshold * 255f);
+
+                var totalPixels = width * height;
+                var changedPixels = 0;
+                var minX = int.MaxValue;
+                var minY = int.MaxValue;
+                var maxX = -1;
+                var maxY = -1;
+
+                diff = new Texture2D(Mathf.Max(1, width), Mathf.Max(1, height), TextureFormat.RGBA32, false);
+                var diffPixels = new Color32[Mathf.Max(1, width) * Mathf.Max(1, height)];
+                var red = new Color32(255, 0, 0, 255);
+
+                for (var y = 0; y < height; y++)
+                {
+                    for (var x = 0; x < width; x++)
+                    {
+                        var baseIndex = (y * baseline.width) + x;
+                        var actIndex = (y * actual.width) + x;
+                        var b = basePixels[baseIndex];
+                        var a = actPixels[actIndex];
+                        var changed = Mathf.Abs(b.r - a.r) > tolerance
+                            || Mathf.Abs(b.g - a.g) > tolerance
+                            || Mathf.Abs(b.b - a.b) > tolerance
+                            || Mathf.Abs(b.a - a.a) > tolerance;
+
+                        var diffIndex = (y * width) + x;
+                        if (changed)
+                        {
+                            changedPixels++;
+                            diffPixels[diffIndex] = red;
+                            minX = Mathf.Min(minX, x);
+                            minY = Mathf.Min(minY, y);
+                            maxX = Mathf.Max(maxX, x);
+                            maxY = Mathf.Max(maxY, y);
+                        }
+                        else
+                        {
+                            // Dim unchanged pixels toward grayscale so the red diff pops.
+                            var gray = (byte)(((a.r + a.g + a.b) / 3) * 0.5f);
+                            diffPixels[diffIndex] = new Color32(gray, gray, gray, 255);
+                        }
+                    }
+                }
+
+                diff.SetPixels32(diffPixels);
+                diff.Apply();
+
+                var pixelDiffPercent = totalPixels > 0 ? 100.0 * changedPixels / totalPixels : 0.0;
+                var hasChange = maxX >= 0;
+                var changedBox = new
+                {
+                    minX = hasChange ? minX : 0,
+                    minY = hasChange ? minY : 0,
+                    maxX = hasChange ? maxX : 0,
+                    maxY = hasChange ? maxY : 0,
+                };
+
+                var encoded = ScenePortImage.EncodeBase64(diff, maxEdge);
+                var diffDirectory = ArtifactDirectory("golden", "diff");
+                Directory.CreateDirectory(diffDirectory);
+                var diffPath = Path.Combine(diffDirectory, "diff-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + ".png");
+                var diffBytes = diff.EncodeToPNG();
+                if (diffBytes != null && diffBytes.Length > 0)
+                {
+                    File.WriteAllBytes(diffPath, diffBytes);
+                }
+
+                var passed = dimensionsMatch && pixelDiffPercent <= passThreshold;
+                return new
+                {
+                    status = "ok",
+                    passed,
+                    pixelDiffPercent,
+                    changedPixels,
+                    totalPixels,
+                    changedBox,
+                    baselineSize = new { width = baseline.width, height = baseline.height },
+                    actualSize = new { width = actual.width, height = actual.height },
+                    diffPath,
+                    imageBase64 = encoded.Base64,
+                    width = encoded.Width,
+                    height = encoded.Height,
+                    threshold,
+                    passThreshold,
+                };
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(baseline);
+                UnityEngine.Object.DestroyImmediate(actual);
+                if (diff != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(diff);
+                }
+            }
         }
 
         internal static object GoldenApprove(ScenePortRequest req, ScenePortContext ctx)

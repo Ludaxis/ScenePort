@@ -8,6 +8,9 @@ import { FakeBridge, type RouteHandler } from "../fixtures/fakeBridge.js";
 
 const okHealth: RouteHandler = () => ({ body: { status: "ok", bridge: "sceneport", port: 38987, projectId: "abc" } });
 
+// 1x1 transparent PNG used as the inline-capture fixture.
+const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
 const TOOL_NAMES = [
   "unity_status",
   "unity_scene_hierarchy",
@@ -119,6 +122,22 @@ describe("MCP server tool surface", () => {
       "/assertions/evaluate": (r) => ({ body: { status: "ok", body: r.body } }),
       "/authoring/batch": (r) => ({ body: { status: "ok", body: r.body } }),
       "/create-script": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/capture-game-view": (r) => ({
+        body: { status: "ok", path: "/tmp/x.png", imageBase64: TINY_PNG, width: 16, height: 16, body: r.body },
+      }),
+      "/golden-frame/compare": (r) => ({
+        body: {
+          status: "ok",
+          passed: false,
+          pixelDiffPercent: 12.3,
+          imageBase64: TINY_PNG,
+          width: 16,
+          height: 16,
+          changedPixels: 5,
+          totalPixels: 256,
+          body: r.body,
+        },
+      }),
     });
   });
 
@@ -150,6 +169,26 @@ describe("MCP server tool surface", () => {
     expect(payload.bridge).toBe("sceneport");
     expect(payload.discoverySource).toBe("env-url");
     expect(payload.capabilities.protocolVersion).toBe(1);
+  });
+
+  it("returns an inline image content block from unity_capture_game_view", async () => {
+    const result = await client!.callTool({ name: "unity_capture_game_view", arguments: {} });
+    const content = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>;
+    const image = content.find((item) => item.type === "image");
+    expect(image).toBeDefined();
+    expect(image?.mimeType).toBe("image/png");
+    expect(image?.data).toBe(TINY_PNG);
+    // The large base64 blob must not be duplicated into the text metadata.
+    const text = content.find((item) => item.type === "text");
+    expect(text?.text).not.toContain(TINY_PNG);
+    expect(text?.text).toContain("/tmp/x.png");
+  });
+
+  it("forwards inline and maxEdge capture params to the bridge", async () => {
+    await client!.callTool({ name: "unity_capture_game_view", arguments: { inline: true, maxEdge: 512 } });
+    const hit = bridge!.requests.find((r) => r.url === "/capture-game-view");
+    expect((hit?.body as Record<string, unknown>).inline).toBe(true);
+    expect((hit?.body as Record<string, unknown>).maxEdge).toBe(512);
   });
 
   it("plumbs query params to the bridge", async () => {
@@ -215,6 +254,31 @@ describe("MCP server tool surface", () => {
     expect((click?.body as Record<string, unknown>).x).toBe(0.5);
     expect((click?.body as Record<string, unknown>).y).toBe(0.75);
     expect(bridge!.requests.some((r) => r.url === "/playtest/status")).toBe(true);
+  });
+
+  it("returns an inline diff image from unity_compare_golden_frame", async () => {
+    const result = await client!.callTool({
+      name: "unity_compare_golden_frame",
+      arguments: { baselinePath: "/tmp/base.png", actualPath: "/tmp/actual.png" },
+    });
+    const content = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>;
+    const image = content.find((item) => item.type === "image");
+    expect(image).toBeDefined();
+    expect(image?.mimeType).toBe("image/png");
+    expect(image?.data).toBe(TINY_PNG);
+    const text = content.find((item) => item.type === "text");
+    expect(text?.text).not.toContain(TINY_PNG);
+    expect(text?.text).toContain("12.3");
+  });
+
+  it("forwards threshold and maxEdge to the golden-frame compare bridge", async () => {
+    await client!.callTool({
+      name: "unity_compare_golden_frame",
+      arguments: { baselinePath: "/tmp/base.png", actualPath: "/tmp/actual.png", threshold: 0.05, maxEdge: 512 },
+    });
+    const hit = bridge!.requests.find((r) => r.url === "/golden-frame/compare");
+    expect((hit?.body as Record<string, unknown>).threshold).toBe(0.05);
+    expect((hit?.body as Record<string, unknown>).maxEdge).toBe(512);
   });
 
   it("reports invalid input as a validation error", async () => {
@@ -311,9 +375,9 @@ describe("MCP server resources and prompts", () => {
     expect(JSON.stringify(payload)).not.toContain("tok");
   });
 
-  it("lists 9 prompts that render non-empty text", async () => {
+  it("lists 12 prompts that render non-empty text", async () => {
     const { prompts } = await client!.listPrompts();
-    expect(prompts.length).toBe(9);
+    expect(prompts.length).toBe(12);
     const rendered = await client!.getPrompt({ name: prompts[0].name });
     expect((rendered.messages[0].content as { text: string }).text.length).toBeGreaterThan(0);
   });

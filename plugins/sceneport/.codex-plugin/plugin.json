@@ -1,6 +1,6 @@
 {
   "name": "sceneport",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Safe Unity Editor MCP bridge for Codex and other MCP clients.",
   "author": {
     "name": "Ludaxis.io",

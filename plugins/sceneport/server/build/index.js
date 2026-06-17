@@ -2980,7 +2980,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3007,7 +3007,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3638,7 +3638,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3896,7 +3896,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -6884,6 +6884,11 @@ var require_dist = __commonJS({
     exports.default = formatsPlugin;
   }
 });
+
+// src/index.ts
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { resolve as resolve2 } from "node:path";
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 import process2 from "node:process";
@@ -12995,12 +13000,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve2();
+        resolve3();
       } else {
-        this._stdout.once("drain", resolve2);
+        this._stdout.once("drain", resolve3);
       }
     });
   }
@@ -13526,7 +13531,7 @@ function categoryForStatus(status) {
 }
 
 // src/version.ts
-var VERSION = "0.8.0";
+var VERSION = "0.9.0";
 
 // src/doctor.ts
 function check2(name, status, detail) {
@@ -19777,7 +19782,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -19794,7 +19799,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19872,7 +19877,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve2(parseResult.data);
+            resolve3(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -20133,12 +20138,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve2, interval);
+      const timeoutId = setTimeout(resolve3, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -21460,7 +21465,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -22107,6 +22112,38 @@ function jsonResult(payload) {
     structuredContent: toStructuredContent(payload)
   };
 }
+var MAX_BASE64_LENGTH = 7e6;
+var BASE64_FIELDS = ["imageBase64", "data"];
+function imageResult(payload, base64Png, mimeType = "image/png") {
+  const metadata = stripBase64(payload);
+  if (typeof base64Png !== "string" || base64Png.length === 0 || base64Png.length > MAX_BASE64_LENGTH) {
+    const note = typeof base64Png === "string" && base64Png.length > MAX_BASE64_LENGTH ? "Inline image omitted because it exceeded the inline size limit; use the file path instead." : "Inline image was not available; use the file path instead.";
+    const textOnly = withImageNote(metadata, note);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(textOnly, null, 2)
+        }
+      ],
+      structuredContent: toStructuredContent(textOnly)
+    };
+  }
+  return {
+    content: [
+      {
+        type: "image",
+        data: base64Png,
+        mimeType
+      },
+      {
+        type: "text",
+        text: JSON.stringify(metadata, null, 2)
+      }
+    ],
+    structuredContent: toStructuredContent(metadata)
+  };
+}
 function errorResult(error2) {
   const message = error2 instanceof Error ? error2.message : String(error2);
   const result = {
@@ -22131,6 +22168,20 @@ function toStructuredContent(payload) {
     return payload;
   }
   return { value: payload };
+}
+function stripBase64(payload) {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+  const copy = { ...payload };
+  for (const field of BASE64_FIELDS) {
+    delete copy[field];
+  }
+  return copy;
+}
+function withImageNote(payload, note) {
+  const base = toStructuredContent(payload);
+  return { ...base, imageNote: note };
 }
 
 // src/server.ts
@@ -22162,6 +22213,17 @@ function createScenePortServer(client) {
       }
     };
   }
+  const inlineCaptureSchema = {
+    inline: external_exports.boolean().default(true).optional().describe("Return the captured image inline so the model can see it."),
+    maxEdge: external_exports.number().int().min(64).max(4096).default(1024).optional().describe("Downscale the captured image's longest edge to this many pixels to keep the payload small.")
+  };
+  function captureResult(response) {
+    const imageBase64 = response !== null && typeof response === "object" ? response.imageBase64 : void 0;
+    if (typeof imageBase64 === "string" && imageBase64.length > 0) {
+      return imageResult(response, imageBase64);
+    }
+    return jsonResult(response);
+  }
   function jsonResource(uri, payload) {
     const resourceUri = typeof uri === "string" ? uri : uri.href;
     return {
@@ -22175,7 +22237,7 @@ function createScenePortServer(client) {
     };
   }
   function sleep(milliseconds) {
-    return new Promise((resolve2) => setTimeout(resolve2, milliseconds));
+    return new Promise((resolve3) => setTimeout(resolve3, milliseconds));
   }
   server.registerTool(
     "unity_status",
@@ -22443,14 +22505,15 @@ function createScenePortServer(client) {
       description: "Capture the Unity Game view to a PNG in the project's Temp/ScenePort folder.",
       inputSchema: {
         fileName: external_exports.string().min(1).max(128).optional(),
-        superSize: external_exports.number().int().min(1).max(4).default(1).optional()
+        superSize: external_exports.number().int().min(1).max(4).default(1).optional(),
+        ...inlineCaptureSchema
       },
       // Writes a PNG file, so this is not read-only.
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
-    async ({ fileName, superSize }) => {
+    async ({ fileName, superSize, inline, maxEdge }) => {
       try {
-        return jsonResult(await client.post("/capture-game-view", { fileName, superSize }));
+        return captureResult(await client.post("/capture-game-view", { fileName, superSize, inline, maxEdge }));
       } catch (error2) {
         return errorResult(error2);
       }
@@ -22619,13 +22682,14 @@ function createScenePortServer(client) {
       description: "Capture the Unity Game view and attach the image path to the active playtest session.",
       inputSchema: {
         fileName: external_exports.string().min(1).max(128).optional(),
-        superSize: external_exports.number().int().min(1).max(4).default(1).optional()
+        superSize: external_exports.number().int().min(1).max(4).default(1).optional(),
+        ...inlineCaptureSchema
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
-    async ({ fileName, superSize }) => {
+    async ({ fileName, superSize, inline, maxEdge }) => {
       try {
-        return jsonResult(await client.post("/playtest/capture-frame", { fileName, superSize }));
+        return captureResult(await client.post("/playtest/capture-frame", { fileName, superSize, inline, maxEdge }));
       } catch (error2) {
         return errorResult(error2);
       }
@@ -22728,11 +22792,18 @@ function createScenePortServer(client) {
       inputSchema: {
         fileName: external_exports.string().min(1).max(128).optional(),
         width: external_exports.number().int().min(64).max(4096).default(1024).optional(),
-        height: external_exports.number().int().min(64).max(4096).default(768).optional()
+        height: external_exports.number().int().min(64).max(4096).default(768).optional(),
+        ...inlineCaptureSchema
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
-    toolPost("/capture-scene-view")
+    async ({ fileName, width, height, inline, maxEdge }) => {
+      try {
+        return captureResult(await client.post("/capture-scene-view", { fileName, width, height, inline, maxEdge }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
   );
   server.registerTool(
     "unity_runtime_status",
@@ -22909,11 +22980,18 @@ function createScenePortServer(client) {
       inputSchema: {
         baselineId: external_exports.string().min(1).max(128).default("default").optional(),
         fileName: external_exports.string().min(1).max(128).optional(),
-        superSize: external_exports.number().int().min(1).max(4).default(1).optional()
+        superSize: external_exports.number().int().min(1).max(4).default(1).optional(),
+        ...inlineCaptureSchema
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
-    toolPost("/golden-frame/capture")
+    async ({ baselineId, fileName, superSize, inline, maxEdge }) => {
+      try {
+        return captureResult(await client.post("/golden-frame/capture", { baselineId, fileName, superSize, inline, maxEdge }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
   );
   server.registerTool(
     "unity_compare_golden_frame",
@@ -22922,11 +23000,20 @@ function createScenePortServer(client) {
       description: "Compare two captured frame artifacts with deterministic metadata.",
       inputSchema: {
         baselinePath: external_exports.string().min(1).max(2048),
-        actualPath: external_exports.string().min(1).max(2048)
+        actualPath: external_exports.string().min(1).max(2048),
+        threshold: external_exports.number().min(0).max(1).default(0.02).optional(),
+        passThreshold: external_exports.number().min(0).max(100).default(0).optional(),
+        maxEdge: external_exports.number().int().min(64).max(4096).default(1024).optional()
       },
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
-    toolPost("/golden-frame/compare")
+    async ({ baselinePath, actualPath, threshold, passThreshold, maxEdge }) => {
+      try {
+        return captureResult(await client.post("/golden-frame/compare", { baselinePath, actualPath, threshold, passThreshold, maxEdge }));
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
   );
   server.registerTool(
     "unity_run_scenario",
@@ -23413,7 +23500,7 @@ function createScenePortServer(client) {
     "sceneport:create-ui-from-screenshot",
     "Create UI From Screenshot",
     "Analyze a screenshot and map it to Unity UI objects.",
-    "Capture or inspect the Unity Game view, compare it with the supplied screenshot or design intent, then identify the Canvas objects, assets, layout, and serialized property edits needed to reproduce the UI safely."
+    "Call unity_capture_game_view with inline:true so you can SEE the current Unity Game view, then compare it pixel-for-pixel against the supplied screenshot or design intent. Identify the Canvas objects, assets, layout, and serialized property edits needed to reproduce the target UI, apply them with typed ScenePort tools (create_game_object, add_component, set_serialized_property), and re-capture the Game view to visually confirm the result matches before finishing."
   );
   registerPrompt(
     "sceneport:write-playmode-test",
@@ -23445,26 +23532,161 @@ function createScenePortServer(client) {
     "Run the v0.5 readiness loop for a Unity project.",
     "Use ScenePort to run a team-readiness smoke: call unity_status, inspect scene hierarchy and selection, read console errors, run relevant EditMode tests, start a short playtest with one capture when safe, read the audit log, and return blockers plus exact follow-up tasks."
   );
+  registerPrompt(
+    "sceneport:self-heal",
+    "Self-Heal Play Mode Loop",
+    "Autonomously enter play mode, observe, fix the top issue, and re-verify.",
+    "Run an autonomous repair loop with ScenePort: check compilation status and console logs, enter play mode, capture the Game view with inline:true so you can SEE what the player sees, and stream the console. Diagnose the single highest-impact runtime problem (error, exception, broken visual, or stuck state). Exit play mode, apply the smallest safe fix through typed ScenePort tools or a focused code edit, then re-enter play mode and re-capture to confirm the issue is resolved. Repeat until the captured frame and console are clean or you hit a blocker you must report. Keep every change reversible and summarize what you healed."
+  );
+  registerPrompt(
+    "sceneport:visual-regression",
+    "Visual Regression Check",
+    "Capture a golden baseline, then detect and explain visual changes.",
+    "Use ScenePort for visual regression: if no baseline exists, call unity_capture_golden_frame to record one and stop. Otherwise capture the current frame, then call unity_compare_golden_frame (tune threshold/passThreshold as needed) and LOOK at the returned diff image \u2014 red regions mark changed pixels. Report pixelDiffPercent, where the changes are (changedBox), whether they are intended or a regression, and the likely cause in the scene/assets. Only approve a new baseline when the change is intentional."
+  );
+  registerPrompt(
+    "sceneport:explain-scene",
+    "Explain This Scene",
+    "Answer how the scene works using hierarchy and asset relationships.",
+    "Use ScenePort to explain how the active Unity scene works: read unity_scene_hierarchy and unity_selection, inspect key GameObjects and their components, and walk unity_asset_graph to trace which scripts, prefabs, and assets reference each other. Answer the user's question about responsibilities and data flow (e.g. 'what spawns enemies?', 'what references the player?') by grounding every claim in concrete objects and components you inspected, and flag anything ambiguous or risky you noticed."
+  );
   return server;
+}
+
+// src/setup.ts
+function npxServerConfig(projectPath) {
+  return {
+    command: "npx",
+    args: ["-y", "sceneport-mcp"],
+    env: {
+      SCENEPORT_PROJECT_PATH: projectPath
+    }
+  };
+}
+function claudeAddCommand(projectPath) {
+  const json = JSON.stringify(npxServerConfig(projectPath));
+  return `claude mcp add-json sceneport '${json}'`;
+}
+function codexConfigJson(projectPath) {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        sceneport: npxServerConfig(projectPath)
+      }
+    },
+    null,
+    2
+  );
+}
+function codexConfigToml(projectPath) {
+  const server = npxServerConfig(projectPath);
+  const args = server.args.map((arg) => JSON.stringify(arg)).join(", ");
+  return [
+    "[mcp_servers.sceneport]",
+    `command = ${JSON.stringify(server.command)}`,
+    `args = [${args}]`,
+    "",
+    "[mcp_servers.sceneport.env]",
+    `SCENEPORT_PROJECT_PATH = ${JSON.stringify(projectPath)}`
+  ].join("\n");
+}
+function resolveProjectPath(env = process.env, cwd = process.cwd()) {
+  if (env.SCENEPORT_PROJECT_PATH) {
+    return env.SCENEPORT_PROJECT_PATH;
+  }
+  const target = discoverBridge(env, cwd);
+  return target.projectPath ?? cwd;
 }
 
 // src/index.ts
 function printHostConfig(host) {
-  const command = process.argv[1] ?? "sceneport";
-  const config2 = {
-    sceneport: {
-      command: "node",
-      args: [command],
-      env: {
-        SCENEPORT_PROJECT_PATH: "/absolute/path/to/UnityProject"
-      }
-    }
-  };
+  const projectPath = resolveProjectPath(process.env, process.cwd());
   if (host === "claude") {
-    console.log(`claude mcp add-json sceneport '${JSON.stringify(config2.sceneport)}'`);
+    console.log(claudeAddCommand(projectPath));
     return;
   }
-  console.log(JSON.stringify(config2, null, 2));
+  console.log(codexConfigJson(projectPath));
+}
+function writeClaudeConfig(projectPath) {
+  const config2 = npxServerConfig(projectPath);
+  const json = JSON.stringify(config2);
+  try {
+    const output = execFileSync("claude", ["mcp", "add-json", "sceneport", json], { encoding: "utf8" });
+    if (output.trim()) {
+      console.log(output.trim());
+    }
+    console.log("Registered ScenePort with Claude (npx form).");
+    return 0;
+  } catch (error2) {
+    const code = typeof error2 === "object" && error2 && "code" in error2 ? String(error2.code) : "";
+    if (code === "ENOENT") {
+      console.error("Could not find the `claude` CLI on your PATH.");
+    } else {
+      const stderr = typeof error2 === "object" && error2 && "stderr" in error2 ? String(error2.stderr) : "";
+      if (stderr.trim()) {
+        console.error(stderr.trim());
+      }
+      console.error("Running `claude mcp add-json` failed.");
+    }
+    console.error("Run this manually instead:");
+    console.error(`  ${claudeAddCommand(projectPath)}`);
+    return 1;
+  }
+}
+function writeCodexConfig(projectPath, target) {
+  const destination = resolve2(target ?? "./sceneport.codex.json");
+  try {
+    writeFileSync(destination, `${codexConfigJson(projectPath)}
+`, "utf8");
+  } catch (error2) {
+    console.error(`Could not write Codex config to ${destination}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    return 1;
+  }
+  console.log(`Wrote Codex MCP config to ${destination}.`);
+  console.log("Merge its `mcpServers.sceneport` entry into your Codex MCP config, or paste this TOML into ~/.codex/config.toml:");
+  console.log("");
+  console.log(codexConfigToml(projectPath));
+  return 0;
+}
+function runConfig(host, argv) {
+  const write = argv.includes("--write");
+  if (host === "claude") {
+    if (!write) {
+      printHostConfig("claude");
+      return 0;
+    }
+    return writeClaudeConfig(resolveProjectPath(process.env, process.cwd()));
+  }
+  if (!write) {
+    printHostConfig("codex");
+    return 0;
+  }
+  const targetFlag = argv.indexOf("--target");
+  const target = targetFlag >= 0 ? argv[targetFlag + 1] : void 0;
+  return writeCodexConfig(resolveProjectPath(process.env, process.cwd()), target);
+}
+async function runInit(argv) {
+  const write = argv.includes("--write");
+  const projectPath = resolveProjectPath(process.env, process.cwd());
+  console.log(`ScenePort setup ${VERSION}`);
+  console.log(`Unity project: ${projectPath}`);
+  console.log("");
+  await runDoctor(process.env, process.cwd());
+  console.log("");
+  console.log("Recommended Claude command:");
+  console.log(`  ${claudeAddCommand(projectPath)}`);
+  console.log("");
+  console.log("Recommended Codex config (paste into your Codex MCP config):");
+  console.log(codexConfigJson(projectPath));
+  console.log("");
+  if (write) {
+    console.log("Writing the Claude registration now...");
+    return writeClaudeConfig(projectPath);
+  }
+  console.log("Next steps:");
+  console.log("  - Run `sceneport config claude --write` to register with Claude automatically.");
+  console.log("  - Run `sceneport config codex --write` to write a Codex config snippet.");
+  return 0;
 }
 async function runAuth(command) {
   if (command === "status") {
@@ -23520,11 +23742,15 @@ async function main() {
   if (command === "config") {
     const host = process.argv[3];
     if (host === "codex" || host === "claude") {
-      printHostConfig(host);
+      process.exitCode = runConfig(host, process.argv.slice(4));
       return;
     }
-    console.error("Usage: sceneport config codex|claude");
+    console.error("Usage: sceneport config claude|codex [--write] [--target <path>]");
     process.exitCode = 1;
+    return;
+  }
+  if (command === "init") {
+    process.exitCode = await runInit(process.argv.slice(3));
     return;
   }
   if (command === "update-check") {

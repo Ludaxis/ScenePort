@@ -39,6 +39,11 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("path")] public string Path;
         [JsonProperty("superSize")] public int SuperSize;
         [JsonProperty("note")] public string Note;
+
+        // Inline image content (v0.9). Null unless the request asked for an inline capture.
+        [JsonProperty("imageBase64", NullValueHandling = NullValueHandling.Ignore)] public string ImageBase64;
+        [JsonProperty("width", NullValueHandling = NullValueHandling.Ignore)] public int? Width;
+        [JsonProperty("height", NullValueHandling = NullValueHandling.Ignore)] public int? Height;
     }
 
     internal sealed class PlaytestReportDto
@@ -159,7 +164,9 @@ namespace ScenePort.McpBridge.Editor
             EnsureSession();
             var superSize = Mathf.Clamp(req.ExtractInt("superSize", req.GetInt("superSize", 1)), 1, 4);
             var fileName = req.ExtractString("fileName", req.GetString("fileName", null));
-            var capture = CaptureFrameInternal(superSize, fileName);
+            var inline = req.ExtractBool("inline", req.GetBool("inline", true));
+            var maxEdge = Mathf.Clamp(req.ExtractInt("maxEdge", req.GetInt("maxEdge", 1024)), 64, 4096);
+            var capture = CaptureFrameInternal(superSize, fileName, inline, maxEdge);
             return new PlaytestCaptureResponse { Capture = capture, Session = BuildSession(ctx) };
         }
 
@@ -253,20 +260,23 @@ namespace ScenePort.McpBridge.Editor
             Record("start", "Implicitly started playtest session.");
         }
 
-        private static PlaytestCaptureDto CaptureFrameInternal(int superSize, string fileName)
+        private static PlaytestCaptureDto CaptureFrameInternal(int superSize, string fileName, bool inline = false, int maxEdge = 1024)
         {
             if (string.IsNullOrEmpty(fileName))
             {
                 fileName = "playtest-" + current.SessionId + "-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".png";
             }
 
-            var capture = EditorStateHandlers.CaptureGameViewFile(fileName, superSize);
+            var capture = EditorStateHandlers.CaptureGameViewFile(fileName, superSize, inline, maxEdge);
             var dto = new PlaytestCaptureDto
             {
                 Utc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
                 Path = capture.Path,
                 SuperSize = capture.SuperSize,
                 Note = capture.Note,
+                ImageBase64 = capture.ImageBase64,
+                Width = capture.Width,
+                Height = capture.Height,
             };
             current.Captures.Add(dto);
             Record("capture", "Captured Game view to " + dto.Path + ".");

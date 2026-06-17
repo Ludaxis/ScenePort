@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.9.0
+
+### Wow And Easy Setup
+- Capture tools (`unity_capture_game_view`, `unity_capture_scene_view`,
+  `unity_capture_playtest_frame`, `unity_capture_golden_frame`) now return real MCP image
+  content blocks the model can see, with `inline` (default true) and `maxEdge` (default 1024)
+  parameters.
+- `unity_compare_golden_frame` now returns a per-pixel diff image plus `pixelDiffPercent` for
+  visual-regression checks.
+- Published the MCP server to npm so `npx -y sceneport-mcp` works without a clone or build.
+- Added a `sceneport init` / `config <client> --write` setup flow that auto-writes host MCP
+  config for Claude Code and Codex.
+- Added a Unity Editor window at `Tools > ScenePort > Setup` for one-click bridge connection
+  and discovery/token state readback.
+- Added new recipe prompts `sceneport:self-heal`, `sceneport:visual-regression`, and
+  `sceneport:explain-scene`.
+- Added a recipe gallery under `docs/recipes/`, a MkDocs Material docs site
+  (`mkdocs.yml` + `.github/workflows/docs.yml`), a `scripts/capture-demo.mjs` screenshot
+  harness, and a restructured README with a hero media slot and 60-second setup.
+
 ## 0.8.0
 
 ### Staged Trust

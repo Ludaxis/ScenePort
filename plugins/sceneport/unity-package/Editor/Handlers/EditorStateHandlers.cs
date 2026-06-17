@@ -186,10 +186,17 @@ namespace ScenePort.McpBridge.Editor
                 fileName = "game-view-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".png";
             }
 
-            return CaptureGameViewFile(fileName, superSize);
+            var inline = req.ExtractBool("inline", req.GetBool("inline", true));
+            var maxEdge = Mathf.Clamp(req.ExtractInt("maxEdge", req.GetInt("maxEdge", 1024)), 64, 4096);
+            return CaptureGameViewFile(fileName, superSize, inline, maxEdge);
         }
 
         internal static CaptureGameViewResponse CaptureGameViewFile(string fileName, int superSize)
+        {
+            return CaptureGameViewFile(fileName, superSize, false, 1024);
+        }
+
+        internal static CaptureGameViewResponse CaptureGameViewFile(string fileName, int superSize, bool inline, int maxEdge)
         {
             superSize = Mathf.Clamp(superSize, 1, 4);
             fileName = ScenePortPaths.SanitizeFileName(fileName);
@@ -201,14 +208,41 @@ namespace ScenePort.McpBridge.Editor
             var directory = Path.Combine(ScenePortPaths.ProjectPath(), "Temp", "ScenePort");
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, fileName);
+
+            // Always write the file artifact (existing behavior). ScreenCapture.CaptureScreenshot
+            // writes asynchronously, so for inline bytes we additionally grab a synchronous texture.
             ScreenCapture.CaptureScreenshot(path, superSize);
 
-            return new CaptureGameViewResponse
+            var response = new CaptureGameViewResponse
             {
                 Path = path,
                 SuperSize = superSize,
                 Note = "Unity writes screenshots asynchronously; the file may appear after a short delay.",
             };
+
+            if (inline)
+            {
+                var texture = ScreenCapture.CaptureScreenshotAsTexture(superSize);
+                try
+                {
+                    var encoded = ScenePortImage.EncodeBase64(texture, maxEdge);
+                    if (!string.IsNullOrEmpty(encoded.Base64))
+                    {
+                        response.ImageBase64 = encoded.Base64;
+                        response.Width = encoded.Width;
+                        response.Height = encoded.Height;
+                    }
+                }
+                finally
+                {
+                    if (texture != null)
+                    {
+                        UnityEngine.Object.DestroyImmediate(texture);
+                    }
+                }
+            }
+
+            return response;
         }
     }
 }

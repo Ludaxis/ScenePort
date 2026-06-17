@@ -1,15 +1,29 @@
 {
-  "name": "@sceneport/mcp-server",
-  "version": "0.8.0",
+  "name": "sceneport-mcp",
+  "version": "0.9.0",
   "description": "MCP stdio server for the ScenePort Unity Editor bridge.",
   "type": "module",
-  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/Ludaxis/ScenePort#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ludaxis/ScenePort.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ludaxis/ScenePort/issues"
+  },
+  "keywords": ["unity", "mcp", "claude", "codex", "editor"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": ["build/"],
   "bin": {
     "sceneport": "./build/index.js",
     "sceneport-mcp": "./build/index.js"
   },
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",
+    "prepublishOnly": "npm run build",
     "start": "node build/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",

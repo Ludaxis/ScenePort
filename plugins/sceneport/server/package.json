@@ -12,14 +12,22 @@
   "bugs": {
     "url": "https://github.com/Ludaxis/ScenePort/issues"
   },
-  "keywords": ["unity", "mcp", "claude", "codex", "editor"],
+  "keywords": [
+    "unity",
+    "mcp",
+    "claude",
+    "codex",
+    "editor"
+  ],
   "publishConfig": {
     "access": "public"
   },
-  "files": ["build/"],
+  "files": [
+    "build/"
+  ],
   "bin": {
-    "sceneport": "./build/index.js",
-    "sceneport-mcp": "./build/index.js"
+    "sceneport": "build/index.js",
+    "sceneport-mcp": "build/index.js"
   },
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",

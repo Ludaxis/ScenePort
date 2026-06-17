@@ -27,7 +27,7 @@ SCENEPORT_PROJECT_PATH=/path/to/UnityProject \
   node ../../../scripts/capture-demo.mjs        # writes docs/media/game-view.png + scene-view.png
 ```
 
-See the header of [`scripts/capture-demo.mjs`](../../scripts/capture-demo.mjs) for options.
+See the header of [`scripts/capture-demo.mjs`](https://github.com/Ludaxis/ScenePort/blob/main/scripts/capture-demo.mjs) for options.
 Rename or copy the generated PNGs to the feature-specific names above as needed.
 
 ## Guidelines

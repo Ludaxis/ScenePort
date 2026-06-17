@@ -46,7 +46,7 @@ namespace ScenePort.McpBridge.Editor
                 return;
             }
 
-            var key = AutoOpenShownKeyPrefix + Application.productGUID;
+            var key = AutoOpenShownKeyPrefix + PlayerSettings.productGUID.ToString("N");
             if (EditorPrefs.GetBool(key, false))
             {
                 return;
@@ -243,7 +243,7 @@ namespace ScenePort.McpBridge.Editor
             EditorGUILayout.Space();
             if (GUILayout.Button("Reset auto-open flag for this project"))
             {
-                EditorPrefs.DeleteKey(AutoOpenShownKeyPrefix + Application.productGUID);
+                EditorPrefs.DeleteKey(AutoOpenShownKeyPrefix + PlayerSettings.productGUID.ToString("N"));
                 SetMessage("Auto-open flag reset. The setup window will open on next import.", MessageType.Info);
             }
         }

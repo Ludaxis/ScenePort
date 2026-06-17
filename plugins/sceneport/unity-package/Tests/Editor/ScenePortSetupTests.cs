@@ -6,6 +6,7 @@ namespace ScenePort.McpBridge.Editor.Tests
     internal sealed class ScenePortSetupTests
     {
         private const string ProjectPath = "/Users/dev/MyUnityGame";
+        private const string ServerPath = "/Users/dev/Library/PackageCache/io.sceneport.mcpbridge/Server~/index.js";
 
         [Test]
         public void ClaudeAddCommandHasExpectedPrefix()
@@ -80,6 +81,91 @@ namespace ScenePort.McpBridge.Editor.Tests
             var command = ScenePortSetup.DoctorCommand();
             Assert.AreEqual("npx", command.FileName);
             CollectionAssert.Contains(command.Args, "sceneport-mcp");
+            CollectionAssert.Contains(command.Args, "doctor");
+            CollectionAssert.Contains(command.Args, "--json");
+        }
+
+        // ---- Local (bundled server) helpers --------------------------------
+
+        [Test]
+        public void LocalServerConfigUsesNodeWithServerPathAndProjectEnv()
+        {
+            var config = ScenePortSetup.LocalServerConfig(ServerPath, ProjectPath);
+            Assert.AreEqual("node", config["command"].Value<string>());
+            Assert.AreEqual(ServerPath, config["args"][0].Value<string>());
+            Assert.AreEqual(ProjectPath, config["env"]["SCENEPORT_PROJECT_PATH"].Value<string>());
+        }
+
+        [Test]
+        public void LocalServerConfigJsonParsesAndContainsServerPath()
+        {
+            var json = JObject.Parse(ScenePortSetup.LocalServerConfigJson(ServerPath, ProjectPath));
+            Assert.AreEqual("node", json["command"].Value<string>());
+            Assert.AreEqual(ServerPath, json["args"][0].Value<string>());
+            Assert.AreEqual(ProjectPath, json["env"]["SCENEPORT_PROJECT_PATH"].Value<string>());
+        }
+
+        [Test]
+        public void ClaudeLocalAddCommandHasExpectedPrefixAndParsableJson()
+        {
+            var command = ScenePortSetup.ClaudeLocalAddCommand(ServerPath, ProjectPath);
+            StringAssert.Contains("claude mcp add-json sceneport", command);
+
+            var start = command.IndexOf('{');
+            var end = command.LastIndexOf('}');
+            Assert.Greater(end, start, "Command should contain a JSON object: " + command);
+
+            var json = JObject.Parse(command.Substring(start, end - start + 1));
+            Assert.AreEqual("node", json["command"].Value<string>());
+            Assert.AreEqual(ServerPath, json["args"][0].Value<string>());
+            Assert.AreEqual(ProjectPath, json["env"]["SCENEPORT_PROJECT_PATH"].Value<string>());
+        }
+
+        [Test]
+        public void ClaudeLocalConfigJsonHasMcpServersMapWithNode()
+        {
+            var json = JObject.Parse(ScenePortSetup.ClaudeLocalConfigJson(ServerPath, ProjectPath));
+            var server = json["mcpServers"]["sceneport"];
+            Assert.IsNotNull(server, "Expected mcpServers.sceneport entry");
+            Assert.AreEqual("node", server["command"].Value<string>());
+            Assert.AreEqual(ServerPath, server["args"][0].Value<string>());
+            Assert.AreEqual(ProjectPath, server["env"]["SCENEPORT_PROJECT_PATH"].Value<string>());
+        }
+
+        [Test]
+        public void CodexLocalConfigTomlHasNodeCommandAndPaths()
+        {
+            var toml = ScenePortSetup.CodexLocalConfigToml(ServerPath, ProjectPath);
+            StringAssert.Contains("[mcp_servers.sceneport]", toml);
+            StringAssert.Contains("command = \"node\"", toml);
+            StringAssert.Contains(ServerPath, toml);
+            StringAssert.Contains("[mcp_servers.sceneport.env]", toml);
+            StringAssert.Contains("SCENEPORT_PROJECT_PATH = \"" + ProjectPath + "\"", toml);
+        }
+
+        [Test]
+        public void CodexLocalConfigTomlEscapesBackslashesInServerPath()
+        {
+            var toml = ScenePortSetup.CodexLocalConfigToml("C:\\pkg\\Server~\\index.js", ProjectPath);
+            StringAssert.Contains("C:\\\\pkg\\\\Server~\\\\index.js", toml);
+        }
+
+        [Test]
+        public void CodexLocalConfigJsonMatchesClaudeLocalShape()
+        {
+            var json = JObject.Parse(ScenePortSetup.CodexLocalConfigJson(ServerPath, ProjectPath));
+            var server = json["mcpServers"]["sceneport"];
+            Assert.IsNotNull(server);
+            Assert.AreEqual("node", server["command"].Value<string>());
+            Assert.AreEqual(ServerPath, server["args"][0].Value<string>());
+        }
+
+        [Test]
+        public void LocalDoctorCommandUsesNodeWithServerPathAndJsonFlag()
+        {
+            var command = ScenePortSetup.LocalDoctorCommand(ServerPath);
+            Assert.AreEqual("node", command.FileName);
+            CollectionAssert.Contains(command.Args, ServerPath);
             CollectionAssert.Contains(command.Args, "doctor");
             CollectionAssert.Contains(command.Args, "--json");
         }

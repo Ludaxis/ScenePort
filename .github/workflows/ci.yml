@@ -44,6 +44,11 @@ jobs:
             git --no-pager diff -- plugins/sceneport/server/build/
             exit 1
           fi
+          if ! git diff --quiet -- plugins/sceneport/unity-package/Server~/ || [ -n "$(git status --porcelain -- plugins/sceneport/unity-package/Server~/)" ]; then
+            echo "::error::Bundled Unity server (unity-package/Server~/index.js) is stale. Run 'npm run build' in plugins/sceneport/server and commit the result."
+            git --no-pager diff -- plugins/sceneport/unity-package/Server~/
+            exit 1
+          fi
 
   test:
     name: Vitest

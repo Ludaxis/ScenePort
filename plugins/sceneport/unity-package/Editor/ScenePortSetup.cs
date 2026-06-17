@@ -182,5 +182,106 @@ namespace ScenePort.McpBridge.Editor
         {
             return ("npx", new[] { "-y", NpmPackage, "doctor", "--json" });
         }
+
+        // ---- Local (bundled server) helpers --------------------------------
+        // These wire the AI tool to the server bundled inside this UPM package
+        // (Server~/index.js) via a local `node <serverPath>` command. No npm,
+        // no clone, no publish. The window resolves the bundled path and node
+        // executable; these helpers stay pure and take the path as an argument.
+
+        /// <summary>
+        /// The local (bundled) MCP server config object (without an outer name key):
+        /// <c>{ "command": "node", "args": ["&lt;serverPath&gt;"], "env": { ... } }</c>.
+        /// </summary>
+        internal static JObject LocalServerConfig(string serverPath, string projectPath)
+        {
+            return new JObject
+            {
+                ["command"] = "node",
+                ["args"] = new JArray(serverPath ?? string.Empty),
+                ["env"] = new JObject
+                {
+                    [ProjectPathEnvVar] = projectPath ?? string.Empty,
+                },
+            };
+        }
+
+        /// <summary>
+        /// Compact JSON for the inner local server config, used as the argument to
+        /// <c>claude mcp add-json sceneport '&lt;json&gt;'</c>.
+        /// </summary>
+        internal static string LocalServerConfigJson(string serverPath, string projectPath)
+        {
+            return LocalServerConfig(serverPath, projectPath).ToString(Formatting.None);
+        }
+
+        /// <summary>
+        /// The exact shell command that registers the bundled ScenePort server with
+        /// Claude Code via the CLI, e.g.
+        /// <c>claude mcp add-json sceneport '{"command":"node","args":["…/index.js"],…}'</c>.
+        /// </summary>
+        internal static string ClaudeLocalAddCommand(string serverPath, string projectPath)
+        {
+            return "claude mcp add-json " + ServerName + " '" + LocalServerConfigJson(serverPath, projectPath) + "'";
+        }
+
+        /// <summary>
+        /// Pretty-printed Claude Code config block for the bundled server: the standard
+        /// <c>mcpServers</c> map with ScenePort under it using <c>node &lt;serverPath&gt;</c>.
+        /// </summary>
+        internal static string ClaudeLocalConfigJson(string serverPath, string projectPath)
+        {
+            var root = new JObject
+            {
+                ["mcpServers"] = new JObject
+                {
+                    [ServerName] = LocalServerConfig(serverPath, projectPath),
+                },
+            };
+            return root.ToString(Formatting.Indented);
+        }
+
+        /// <summary>
+        /// Codex MCP config block in TOML form for the bundled server. Mirrors
+        /// <see cref="CodexConfigToml"/> but with the <c>node &lt;serverPath&gt;</c> command.
+        /// </summary>
+        internal static string CodexLocalConfigToml(string serverPath, string projectPath)
+        {
+            var safePath = TomlEscape(projectPath);
+            var safeServer = TomlEscape(serverPath);
+            var lines = new List<string>
+            {
+                "[mcp_servers." + ServerName + "]",
+                "command = \"node\"",
+                "args = [\"" + safeServer + "\"]",
+                "",
+                "[mcp_servers." + ServerName + ".env]",
+                ProjectPathEnvVar + " = \"" + safePath + "\"",
+            };
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>
+        /// Codex MCP config block in JSON form for the bundled server, for Codex builds
+        /// that accept JSON config. Mirrors the Claude shape under an <c>mcpServers</c> map.
+        /// </summary>
+        internal static string CodexLocalConfigJson(string serverPath, string projectPath)
+        {
+            return ClaudeLocalConfigJson(serverPath, projectPath);
+        }
+
+        /// <summary>
+        /// The doctor command line for the bundled server. Returns the node executable
+        /// plus its argument array (<c>node &lt;serverPath&gt; doctor --json</c>).
+        /// </summary>
+        internal static (string FileName, string[] Args) LocalDoctorCommand(string serverPath)
+        {
+            return ("node", new[] { serverPath ?? string.Empty, "doctor", "--json" });
+        }
+
+        private static string TomlEscape(string value)
+        {
+            return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
     }
 }

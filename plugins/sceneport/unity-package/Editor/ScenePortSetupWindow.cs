@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using UnityEditor;
+using UnityEditor.PackageManager;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -27,6 +30,14 @@ namespace ScenePort.McpBridge.Editor
         private string statusMessage = string.Empty;
         private MessageType statusMessageType = MessageType.Info;
         private string doctorOutput = string.Empty;
+
+        // Resolved once per window session (best-effort; null when not found).
+        private string bundledServerPath;
+        private bool bundledServerResolved;
+
+        // Cache for resolved executables ("claude", "node", ...) -> absolute path or null.
+        private static readonly Dictionary<string, string> ExecutableCache =
+            new Dictionary<string, string>();
 
         [MenuItem("Tools/ScenePort/Setup", false, 0)]
         internal static void Open()
@@ -134,6 +145,11 @@ namespace ScenePort.McpBridge.Editor
                 EditorGUILayout.LabelField("Project", string.IsNullOrEmpty(status.ProjectName) ? "-" : status.ProjectName);
                 SelectableRow("Project path", status.ProjectPath);
                 EditorGUILayout.LabelField("Unity version", string.IsNullOrEmpty(status.UnityVersion) ? Application.unityVersion : status.UnityVersion);
+
+                var nodePath = ResolveExecutable("node");
+                EditorGUILayout.LabelField("Node detected", string.IsNullOrEmpty(nodePath) ? "not found" : nodePath);
+                var serverPath = BundledServerPath();
+                EditorGUILayout.LabelField("Bundled server", string.IsNullOrEmpty(serverPath) ? "not found" : serverPath);
             }
 
             using (new EditorGUILayout.HorizontalScope())
@@ -157,35 +173,81 @@ namespace ScenePort.McpBridge.Editor
         private void DrawConnectSection()
         {
             var projectPath = status.ProjectPath;
+            var serverPath = BundledServerPath();
 
             EditorGUILayout.LabelField("Connect your AI tool", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(
-                "Paste one of the configs below into Claude Code or Codex.",
-                EditorStyles.miniLabel);
-            EditorGUILayout.Space();
 
-            EditorGUILayout.LabelField("Claude Code (one-liner)", EditorStyles.miniBoldLabel);
+            if (!string.IsNullOrEmpty(serverPath))
+            {
+                EditorGUILayout.LabelField(
+                    "Recommended: the MCP server is bundled with this package. " +
+                    "These configs run it directly with Node — no npm install, clone, or publish.",
+                    EditorStyles.miniLabel);
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField("Claude Code (one-liner, local)", EditorStyles.miniBoldLabel);
+                var claudeLocalCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath);
+                SelectableTextArea(claudeLocalCommand, 3);
+                if (GUILayout.Button("Copy Claude command (local)"))
+                {
+                    CopyToClipboard(claudeLocalCommand, "Claude command");
+                }
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField("Claude Code (.mcp.json, local)", EditorStyles.miniBoldLabel);
+                var claudeLocalJson = ScenePortSetup.ClaudeLocalConfigJson(serverPath, projectPath);
+                SelectableTextArea(claudeLocalJson, 7);
+                if (GUILayout.Button("Copy Claude config (local)"))
+                {
+                    CopyToClipboard(claudeLocalJson, "Claude config");
+                }
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField("Codex (config.toml, local)", EditorStyles.miniBoldLabel);
+                var codexLocalToml = ScenePortSetup.CodexLocalConfigToml(serverPath, projectPath);
+                SelectableTextArea(codexLocalToml, 6);
+                if (GUILayout.Button("Copy Codex config (local)"))
+                {
+                    CopyToClipboard(codexLocalToml, "Codex config");
+                }
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField(
+                    "Alternative (after 'npm publish'): the npx-based configs below fetch " +
+                    "the published " + ScenePortSetup.NpmPackage + " package.",
+                    EditorStyles.miniLabel);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "Bundled server not found. Using the npx configs below, which require the " +
+                    ScenePortSetup.NpmPackage + " package to be published to npm.",
+                    MessageType.Warning);
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Claude Code (one-liner, npx)", EditorStyles.miniBoldLabel);
             var claudeCommand = ScenePortSetup.ClaudeAddCommand(projectPath);
             SelectableTextArea(claudeCommand, 2);
-            if (GUILayout.Button("Copy Claude command"))
+            if (GUILayout.Button("Copy Claude command (npx)"))
             {
                 CopyToClipboard(claudeCommand, "Claude command");
             }
             EditorGUILayout.Space();
 
-            EditorGUILayout.LabelField("Claude Code (.mcp.json)", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("Claude Code (.mcp.json, npx)", EditorStyles.miniBoldLabel);
             var claudeJson = ScenePortSetup.ClaudeConfigJson(projectPath);
             SelectableTextArea(claudeJson, 7);
-            if (GUILayout.Button("Copy Claude config"))
+            if (GUILayout.Button("Copy Claude config (npx)"))
             {
                 CopyToClipboard(claudeJson, "Claude config");
             }
             EditorGUILayout.Space();
 
-            EditorGUILayout.LabelField("Codex (config.toml)", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("Codex (config.toml, npx)", EditorStyles.miniBoldLabel);
             var codexToml = ScenePortSetup.CodexConfigToml(projectPath);
             SelectableTextArea(codexToml, 6);
-            if (GUILayout.Button("Copy Codex config"))
+            if (GUILayout.Button("Copy Codex config (npx)"))
             {
                 CopyToClipboard(codexToml, "Codex config");
             }
@@ -193,22 +255,60 @@ namespace ScenePort.McpBridge.Editor
 
         private void DrawOneClickSection()
         {
-            EditorGUILayout.LabelField("One-click setup", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(
-                "Runs the Claude CLI to register ScenePort for you (requires 'claude' on PATH).",
-                EditorStyles.miniLabel);
+            var serverPath = BundledServerPath();
+            var hasBundled = !string.IsNullOrEmpty(serverPath);
 
-            if (GUILayout.Button("Write Claude config (run claude mcp add-json)"))
+            EditorGUILayout.LabelField("One-click setup", EditorStyles.boldLabel);
+
+            if (hasBundled)
             {
-                WriteClaudeConfig();
+                EditorGUILayout.LabelField(
+                    "Registers the bundled server with your AI tool (resolves 'claude'/'node' for you).",
+                    EditorStyles.miniLabel);
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Connect Claude (local)"))
+                    {
+                        ConnectClaudeLocal();
+                    }
+
+                    if (GUILayout.Button("Connect Codex (local)"))
+                    {
+                        ConnectCodexLocal();
+                    }
+                }
+
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Needs npm publish:", EditorStyles.miniLabel);
+                if (GUILayout.Button("Write Claude config (npx — requires npm publish)"))
+                {
+                    WriteClaudeConfig();
+                }
+            }
+            else
+            {
+                EditorGUILayout.LabelField(
+                    "Runs the Claude CLI to register ScenePort for you (requires 'claude' on PATH " +
+                    "and the published " + ScenePortSetup.NpmPackage + " package).",
+                    EditorStyles.miniLabel);
+
+                if (GUILayout.Button("Write Claude config (run claude mcp add-json)"))
+                {
+                    WriteClaudeConfig();
+                }
             }
         }
 
         private void DrawDiagnosticsSection()
         {
+            var hasBundled = !string.IsNullOrEmpty(BundledServerPath());
+
             EditorGUILayout.LabelField("Diagnostics", EditorStyles.boldLabel);
             EditorGUILayout.LabelField(
-                "Runs the MCP server doctor (npx -y sceneport-mcp doctor --json).",
+                hasBundled
+                    ? "Runs the bundled MCP server doctor (node <bundled> doctor --json)."
+                    : "Runs the MCP server doctor (npx -y " + ScenePortSetup.NpmPackage + " doctor --json).",
                 EditorStyles.miniLabel);
 
             if (GUILayout.Button("Run doctor"))
@@ -302,16 +402,105 @@ namespace ScenePort.McpBridge.Editor
             Repaint();
         }
 
+        private void ConnectClaudeLocal()
+        {
+            var projectPath = status != null ? status.ProjectPath : SafeProjectPath();
+            var serverPath = BundledServerPath();
+            var fallbackCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath);
+
+            if (string.IsNullOrEmpty(serverPath))
+            {
+                SetMessage("Bundled server not found. Use the npx option below.", MessageType.Warning);
+                return;
+            }
+
+            var claude = ResolveExecutable("claude");
+            if (string.IsNullOrEmpty(claude))
+            {
+                EditorGUIUtility.systemCopyBuffer = fallbackCommand;
+                EditorUtility.DisplayDialog(
+                    "Claude CLI not found",
+                    "Could not find 'claude' on PATH. The command has been copied to your clipboard so you " +
+                    "can run it in a terminal:\n\n" + fallbackCommand,
+                    "OK");
+                SetMessage("'claude' not found. Command copied to clipboard.", MessageType.Warning);
+                return;
+            }
+
+            var json = ScenePortSetup.LocalServerConfigJson(serverPath, projectPath);
+            try
+            {
+                var result = RunProcess(claude, new[] { "mcp", "add-json", ScenePortSetup.ServerName, json }, 30);
+                if (!result.Launched)
+                {
+                    EditorGUIUtility.systemCopyBuffer = fallbackCommand;
+                    SetMessage("Could not launch 'claude'. Command copied to clipboard.", MessageType.Warning);
+                    return;
+                }
+
+                var combined = (result.StdOut + "\n" + result.StdErr).Trim();
+                if (result.ExitCode == 0)
+                {
+                    EditorUtility.DisplayDialog("ScenePort", "Connected the bundled ScenePort server to Claude Code.\n\n" + combined, "OK");
+                    SetMessage("Claude connected (local server).", MessageType.Info);
+                }
+                else
+                {
+                    EditorUtility.DisplayDialog("ScenePort", "claude exited with code " + result.ExitCode + ":\n\n" + combined, "OK");
+                    SetMessage("claude exited with code " + result.ExitCode + ". See dialog for details.", MessageType.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                EditorGUIUtility.systemCopyBuffer = fallbackCommand;
+                SetMessage("Could not run claude (" + ex.Message + "). Command copied to clipboard.", MessageType.Warning);
+            }
+        }
+
+        private void ConnectCodexLocal()
+        {
+            // Codex has no register-by-CLI flow here; copy the TOML for the user to paste
+            // into ~/.codex/config.toml.
+            var projectPath = status != null ? status.ProjectPath : SafeProjectPath();
+            var serverPath = BundledServerPath();
+            if (string.IsNullOrEmpty(serverPath))
+            {
+                SetMessage("Bundled server not found. Use the npx option below.", MessageType.Warning);
+                return;
+            }
+
+            var toml = ScenePortSetup.CodexLocalConfigToml(serverPath, projectPath);
+            EditorGUIUtility.systemCopyBuffer = toml;
+            EditorUtility.DisplayDialog(
+                "Codex config copied",
+                "The local Codex config has been copied to your clipboard. Paste it into " +
+                "~/.codex/config.toml:\n\n" + toml,
+                "OK");
+            SetMessage("Codex config (local) copied to clipboard.", MessageType.Info);
+        }
+
         private void WriteClaudeConfig()
         {
             var projectPath = status != null ? status.ProjectPath : SafeProjectPath();
             var json = ScenePortSetup.NpxServerConfigJson(projectPath);
+            var fallback = ScenePortSetup.ClaudeAddCommand(projectPath);
             try
             {
-                var result = RunProcess("claude", new[] { "mcp", "add-json", ScenePortSetup.ServerName, json }, 30);
+                var claude = ResolveExecutable("claude");
+                if (string.IsNullOrEmpty(claude))
+                {
+                    EditorGUIUtility.systemCopyBuffer = fallback;
+                    EditorUtility.DisplayDialog(
+                        "Claude CLI not found",
+                        "Could not find 'claude' on PATH. The command has been copied to your clipboard so you can run it in a terminal:\n\n" + fallback,
+                        "OK");
+                    SetMessage("'claude' not found on PATH. Command copied to clipboard.", MessageType.Warning);
+                    return;
+                }
+
+                var result = RunProcess(claude, new[] { "mcp", "add-json", ScenePortSetup.ServerName, json }, 30);
                 if (!result.Launched)
                 {
-                    var fallback = ScenePortSetup.ClaudeAddCommand(projectPath);
                     EditorGUIUtility.systemCopyBuffer = fallback;
                     EditorUtility.DisplayDialog(
                         "Claude CLI not found",
@@ -335,7 +524,6 @@ namespace ScenePort.McpBridge.Editor
             }
             catch (Exception ex)
             {
-                var fallback = ScenePortSetup.ClaudeAddCommand(projectPath);
                 EditorGUIUtility.systemCopyBuffer = fallback;
                 SetMessage("Could not run claude (" + ex.Message + "). Command copied to clipboard.", MessageType.Warning);
             }
@@ -343,16 +531,45 @@ namespace ScenePort.McpBridge.Editor
 
         private void RunDoctor()
         {
-            var command = ScenePortSetup.DoctorCommand();
-            try
+            var serverPath = BundledServerPath();
+            var useLocal = !string.IsNullOrEmpty(serverPath);
+
+            // Prefer the bundled server with a resolved node; fall back to npx.
+            string fileName;
+            string[] args;
+            if (useLocal)
             {
-                var result = RunProcess(command.FileName, command.Args, DoctorTimeoutSeconds);
-                if (!result.Launched)
+                var node = ResolveExecutable("node");
+                if (string.IsNullOrEmpty(node))
                 {
                     doctorOutput =
-                        "Could not launch '" + command.FileName + "'. Make sure Node.js/npx is installed.\n\n" +
-                        "Run manually in a terminal:\n  npx -y " + ScenePortSetup.NpmPackage + " doctor --json";
-                    SetMessage("Doctor could not launch (npx not found).", MessageType.Warning);
+                        "Node not found on PATH — install Node 18+, or run the bundled server manually:\n\n" +
+                        "  node \"" + serverPath + "\" doctor --json";
+                    SetMessage("Node not found on PATH.", MessageType.Warning);
+                    return;
+                }
+                var local = ScenePortSetup.LocalDoctorCommand(serverPath);
+                fileName = node;
+                args = local.Args;
+            }
+            else
+            {
+                var command = ScenePortSetup.DoctorCommand();
+                fileName = ResolveExecutable(command.FileName) ?? command.FileName;
+                args = command.Args;
+            }
+
+            try
+            {
+                var result = RunProcess(fileName, args, DoctorTimeoutSeconds);
+                if (!result.Launched)
+                {
+                    doctorOutput = useLocal
+                        ? "Could not launch node. Make sure Node.js 18+ is installed.\n\n" +
+                          "Run manually in a terminal:\n  node \"" + serverPath + "\" doctor --json"
+                        : "Could not launch '" + fileName + "'. Make sure Node.js/npx is installed.\n\n" +
+                          "Run manually in a terminal:\n  npx -y " + ScenePortSetup.NpmPackage + " doctor --json";
+                    SetMessage("Doctor could not launch.", MessageType.Warning);
                     return;
                 }
 
@@ -369,9 +586,12 @@ namespace ScenePort.McpBridge.Editor
             }
             catch (Exception ex)
             {
+                var manual = useLocal
+                    ? "  node \"" + serverPath + "\" doctor --json"
+                    : "  npx -y " + ScenePortSetup.NpmPackage + " doctor --json";
                 doctorOutput =
                     "Doctor failed: " + ex.Message + "\n\n" +
-                    "Run manually in a terminal:\n  npx -y " + ScenePortSetup.NpmPackage + " doctor --json";
+                    "Run manually in a terminal:\n" + manual;
                 SetMessage("Doctor failed: " + ex.Message, MessageType.Warning);
             }
         }
@@ -514,5 +734,239 @@ namespace ScenePort.McpBridge.Editor
                 return string.Empty;
             }
         }
+
+        // ---- Bundled server / executable resolution -------------------------
+
+        /// <summary>
+        /// Cached accessor for the bundled server path; resolves once per window session.
+        /// </summary>
+        private string BundledServerPath()
+        {
+            if (!bundledServerResolved)
+            {
+                try
+                {
+                    bundledServerPath = ResolveBundledServerPath();
+                }
+                catch
+                {
+                    bundledServerPath = null;
+                }
+                bundledServerResolved = true;
+            }
+            return bundledServerPath;
+        }
+
+        /// <summary>
+        /// Resolves the absolute path to the bundled MCP server (Server~/index.js) shipped
+        /// inside this UPM package. Returns null if it cannot be found. Never throws.
+        /// </summary>
+        private static string ResolveBundledServerPath()
+        {
+            // 1) Installed package: ask the Package Manager for the resolved on-disk path.
+            try
+            {
+                var pkg = PackageInfo.FindForAssembly(typeof(ScenePortSetupWindow).Assembly);
+                if (pkg != null && !string.IsNullOrEmpty(pkg.resolvedPath))
+                {
+                    var candidate = Path.Combine(pkg.resolvedPath, "Server~", "index.js");
+                    if (File.Exists(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+            catch
+            {
+                // Fall through to dev-path probing.
+            }
+
+            // 2) Dev fallback: this source file lives at
+            //    .../unity-package/Editor/ScenePortSetupWindow.cs, so Server~/index.js is a
+            //    sibling of the Editor folder. Walk up from the assembly location is not
+            //    reliable in the editor, so probe relative to known package roots.
+            try
+            {
+                foreach (var root in DevPackageRootCandidates())
+                {
+                    if (string.IsNullOrEmpty(root))
+                    {
+                        continue;
+                    }
+                    var candidate = Path.Combine(root, "Server~", "index.js");
+                    if (File.Exists(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Candidate package roots for the dev/embedded layout (source repo, not an
+        /// installed package). Best-effort; any may not exist.
+        /// </summary>
+        private static IEnumerable<string> DevPackageRootCandidates()
+        {
+            var dataPath = Application.dataPath; // <project>/Assets
+            var projectRoot = Directory.GetParent(dataPath)?.FullName;
+            if (!string.IsNullOrEmpty(projectRoot))
+            {
+                // Embedded under Packages/ by name.
+                yield return Path.Combine(projectRoot, "Packages", "io.sceneport.mcpbridge");
+                // Embedded directly under the repo layout.
+                yield return Path.Combine(projectRoot, "plugins", "sceneport", "unity-package");
+            }
+        }
+
+        /// <summary>
+        /// Resolves the absolute path to an executable, accounting for GUI apps on macOS not
+        /// inheriting the login-shell PATH. Returns null if not found. Caches results; never throws.
+        /// </summary>
+        private static string ResolveExecutable(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return null;
+            }
+
+            if (ExecutableCache.TryGetValue(name, out var cached))
+            {
+                return cached;
+            }
+
+            string resolved = null;
+            try
+            {
+#if UNITY_EDITOR_WIN
+                resolved = ResolveViaWhere(name);
+#else
+                resolved = ResolveViaLoginShell(name) ?? ProbeCommonDirs(name);
+#endif
+            }
+            catch
+            {
+                resolved = null;
+            }
+
+            ExecutableCache[name] = resolved;
+            return resolved;
+        }
+
+#if UNITY_EDITOR_WIN
+        private static string ResolveViaWhere(string name)
+        {
+            var result = RunProcess("where", new[] { name }, 5);
+            if (!result.Launched || string.IsNullOrEmpty(result.StdOut))
+            {
+                return null;
+            }
+            foreach (var line in result.StdOut.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                if (!string.IsNullOrEmpty(trimmed) && File.Exists(trimmed))
+                {
+                    return trimmed;
+                }
+            }
+            return null;
+        }
+#else
+        private static string ResolveViaLoginShell(string name)
+        {
+            // GUI apps launched from Finder/Dock do not inherit the shell PATH, so ask a
+            // login shell to resolve the binary the way the user's terminal would.
+            var shell = Environment.GetEnvironmentVariable("SHELL");
+            var shells = new List<string>();
+            if (!string.IsNullOrEmpty(shell))
+            {
+                shells.Add(shell);
+            }
+            shells.Add("/bin/zsh");
+            shells.Add("/bin/bash");
+
+            foreach (var sh in shells)
+            {
+                if (string.IsNullOrEmpty(sh) || !File.Exists(sh))
+                {
+                    continue;
+                }
+                var result = RunProcess(sh, new[] { "-l", "-c", "command -v " + name }, 5);
+                if (!result.Launched)
+                {
+                    continue;
+                }
+                var path = (result.StdOut ?? string.Empty).Trim();
+                // Use the last non-empty line in case the login shell prints noise.
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var lines = path.Split('\n');
+                    var last = lines[lines.Length - 1].Trim();
+                    if (!string.IsNullOrEmpty(last) && File.Exists(last))
+                    {
+                        return last;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static string ProbeCommonDirs(string name)
+        {
+            var home = Environment.GetEnvironmentVariable("HOME") ?? string.Empty;
+            var dirs = new List<string>
+            {
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                "/usr/bin",
+            };
+            if (!string.IsNullOrEmpty(home))
+            {
+                dirs.Add(Path.Combine(home, ".local", "bin"));
+                dirs.Add(Path.Combine(home, ".npm-global", "bin"));
+            }
+
+            foreach (var dir in dirs)
+            {
+                var candidate = Path.Combine(dir, name);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            // ~/.nvm/versions/node/*/bin (most relevant for node).
+            if (!string.IsNullOrEmpty(home))
+            {
+                var nvm = Path.Combine(home, ".nvm", "versions", "node");
+                try
+                {
+                    if (Directory.Exists(nvm))
+                    {
+                        foreach (var versionDir in Directory.GetDirectories(nvm))
+                        {
+                            var candidate = Path.Combine(versionDir, "bin", name);
+                            if (File.Exists(candidate))
+                            {
+                                return candidate;
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            return null;
+        }
+#endif
     }
 }

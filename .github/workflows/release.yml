@@ -56,20 +56,21 @@ jobs:
           test -f plugins/sceneport/server/build/index.js
           test -f plugins/sceneport/unity-package/package.json
 
-      - name: Require Unity license
+      - name: Skip when no Unity license
+        if: env.UNITY_LICENSE == ''
         run: |
-          if [ -z "$UNITY_LICENSE" ]; then
-            echo "::error::UNITY_LICENSE secret is required for release Unity EditMode tests."
-            exit 1
-          fi
+          echo "::warning::UNITY_LICENSE secret not set — skipping Unity EditMode tests for this release."
+          echo "Set UNITY_LICENSE (and UNITY_EMAIL/UNITY_PASSWORD for a Personal license) to gate releases on Unity tests."
 
       - name: Cache Unity Library
+        if: env.UNITY_LICENSE != ''
         uses: actions/cache@v4
         with:
           path: TestProjects/BridgeHarness/Library
           key: release-unity-library-${{ hashFiles('TestProjects/BridgeHarness/Packages/manifest.json') }}
 
       - name: Run Unity EditMode tests
+        if: env.UNITY_LICENSE != ''
         uses: game-ci/unity-test-runner@v4
         with:
           projectPath: TestProjects/BridgeHarness
@@ -77,7 +78,7 @@ jobs:
           unityVersion: 2022.3.62f3
 
       - name: Upload Unity test results
-        if: always()
+        if: always() && env.UNITY_LICENSE != ''
         uses: actions/upload-artifact@v4
         with:
           name: unity-editmode-results

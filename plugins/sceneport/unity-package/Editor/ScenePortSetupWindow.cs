@@ -30,6 +30,20 @@ namespace ScenePort.McpBridge.Editor
         private MessageType statusMessageType = MessageType.Info;
         private string doctorOutput = string.Empty;
 
+        // Deferred work: button handlers in OnGUI must NOT block, open dialogs, or spawn
+        // processes during the render pass (Unity throws "GUI Window tried to begin
+        // rendering while something else had not finished rendering"). They enqueue an
+        // Action here; Update() drains it OUTSIDE the OnGUI pass where blocking is safe.
+        private System.Action pendingAction;
+
+        // Environment resolution (executables / bundled server path) spawns blocking child
+        // processes (login shell, `where`). These must never run during OnGUI. They are
+        // resolved off the render thread into these cached fields; OnGUI only READS them.
+        private string cachedNodePath;
+        private string cachedClaudePath;
+        private string cachedServerPath;
+        private bool environmentResolved;
+
         // Resolved once per window session (best-effort; null when not found).
         private string bundledServerPath;
         private bool bundledServerResolved;
@@ -80,51 +94,83 @@ namespace ScenePort.McpBridge.Editor
         private void OnEnable()
         {
             RefreshStatus();
+
+            // Resolve executables/paths OFF the render thread. ResolveExecutable() spawns a
+            // blocking login shell / `where`, which must never run during OnGUI. Defer it so
+            // it runs after the current import/compile and outside any GUI pass. Never in CI.
+            if (!Application.isBatchMode)
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    if (this != null)
+                    {
+                        RefreshEnvironment();
+                    }
+                };
+            }
+        }
+
+        private void Update()
+        {
+            // Drain deferred actions OUTSIDE the OnGUI render pass. Here it is safe to run
+            // blocking processes (RunProcess) and modal dialogs (EditorUtility.DisplayDialog).
+            if (pendingAction != null)
+            {
+                var action = pendingAction;
+                pendingAction = null;
+                try
+                {
+                    action();
+                }
+                catch (Exception ex)
+                {
+                    SetMessage("Action failed: " + ex.Message, MessageType.Error);
+                }
+                Repaint();
+            }
         }
 
         private void OnGUI()
         {
-            try
-            {
-                DrawGui();
-            }
-            catch (Exception ex)
-            {
-                // OnGUI must never throw out into the editor. Surface it instead.
-                EditorGUILayout.HelpBox("ScenePort setup window error: " + ex.Message, MessageType.Error);
-            }
-        }
-
-        private void DrawGui()
-        {
+            // Compute/read all non-layout state BEFORE opening any layout group so the
+            // layout-rendering section below cannot throw and leave the layout-group stack
+            // unbalanced. OnGUI only READS cached state — it never blocks, spawns a process,
+            // resolves an executable, or opens a dialog. All side effects are deferred to
+            // Update() via pendingAction.
             if (status == null)
             {
                 RefreshStatus();
             }
 
             scroll = EditorGUILayout.BeginScrollView(scroll);
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("ScenePort", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("Connect Claude Code or Codex to this Unity project.", EditorStyles.miniLabel);
-            EditorGUILayout.Space();
-
-            if (!string.IsNullOrEmpty(statusMessage))
+            try
             {
-                EditorGUILayout.HelpBox(statusMessage, statusMessageType);
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("ScenePort", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField("Connect Claude Code or Codex to this Unity project.", EditorStyles.miniLabel);
+                EditorGUILayout.Space();
+
+                if (!string.IsNullOrEmpty(statusMessage))
+                {
+                    EditorGUILayout.HelpBox(statusMessage, statusMessageType);
+                }
+
+                DrawStatusSection();
+                EditorGUILayout.Space();
+                DrawConnectSection();
+                EditorGUILayout.Space();
+                DrawOneClickSection();
+                EditorGUILayout.Space();
+                DrawDiagnosticsSection();
+                EditorGUILayout.Space();
+                DrawLinksSection();
             }
-
-            DrawStatusSection();
-            EditorGUILayout.Space();
-            DrawConnectSection();
-            EditorGUILayout.Space();
-            DrawOneClickSection();
-            EditorGUILayout.Space();
-            DrawDiagnosticsSection();
-            EditorGUILayout.Space();
-            DrawLinksSection();
-
-            EditorGUILayout.EndScrollView();
+            finally
+            {
+                // Guarantee the scroll view is always closed, on every path, so the
+                // layout-group stack stays balanced even if a section throws.
+                EditorGUILayout.EndScrollView();
+            }
         }
 
         // ---- Sections -------------------------------------------------------
@@ -145,17 +191,28 @@ namespace ScenePort.McpBridge.Editor
                 SelectableRow("Project path", status.ProjectPath);
                 EditorGUILayout.LabelField("Unity version", string.IsNullOrEmpty(status.UnityVersion) ? Application.unityVersion : status.UnityVersion);
 
-                var nodePath = ResolveExecutable("node");
-                EditorGUILayout.LabelField("Node detected", string.IsNullOrEmpty(nodePath) ? "not found" : nodePath);
-                var serverPath = BundledServerPath();
-                EditorGUILayout.LabelField("Bundled server", string.IsNullOrEmpty(serverPath) ? "not found" : serverPath);
+                if (!environmentResolved)
+                {
+                    EditorGUILayout.LabelField("Node detected", "checking…");
+                    EditorGUILayout.LabelField("Bundled server", "checking…");
+                }
+                else
+                {
+                    EditorGUILayout.LabelField("Node detected", string.IsNullOrEmpty(cachedNodePath) ? "not found" : cachedNodePath);
+                    EditorGUILayout.LabelField("Bundled server", string.IsNullOrEmpty(cachedServerPath) ? "not found" : cachedServerPath);
+                }
             }
 
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Refresh"))
                 {
-                    RefreshStatus();
+                    // Defer: RefreshEnvironment() spawns blocking processes; never in OnGUI.
+                    pendingAction = () =>
+                    {
+                        RefreshStatus();
+                        RefreshEnvironment();
+                    };
                 }
 
                 using (new EditorGUI.DisabledScope(status.Port <= 0))
@@ -172,7 +229,9 @@ namespace ScenePort.McpBridge.Editor
         private void DrawConnectSection()
         {
             var projectPath = status.ProjectPath;
-            var serverPath = BundledServerPath();
+            // Read cached value only; before resolution finishes treat as "no bundled server"
+            // so the npx-based instructions are shown as a safe default.
+            var serverPath = environmentResolved ? cachedServerPath : null;
 
             EditorGUILayout.LabelField("Connect your AI tool", EditorStyles.boldLabel);
 
@@ -254,10 +313,16 @@ namespace ScenePort.McpBridge.Editor
 
         private void DrawOneClickSection()
         {
-            var serverPath = BundledServerPath();
+            // Read cached value only; treat unresolved as "no bundled server".
+            var serverPath = environmentResolved ? cachedServerPath : null;
             var hasBundled = !string.IsNullOrEmpty(serverPath);
 
             EditorGUILayout.LabelField("One-click setup", EditorStyles.boldLabel);
+
+            if (!environmentResolved)
+            {
+                EditorGUILayout.HelpBox("Resolving local tools (node/claude/bundled server)…", MessageType.Info);
+            }
 
             if (hasBundled)
             {
@@ -269,12 +334,14 @@ namespace ScenePort.McpBridge.Editor
                 {
                     if (GUILayout.Button("Connect Claude (local)"))
                     {
-                        ConnectClaudeLocal();
+                        // Defer: runs claude CLI + dialog; must run outside OnGUI.
+                        pendingAction = () => ConnectClaudeLocal();
                     }
 
                     if (GUILayout.Button("Connect Codex (local)"))
                     {
-                        ConnectCodexLocal();
+                        // Defer: opens a dialog; must run outside OnGUI.
+                        pendingAction = () => ConnectCodexLocal();
                     }
                 }
 
@@ -282,7 +349,8 @@ namespace ScenePort.McpBridge.Editor
                 EditorGUILayout.LabelField("Needs npm publish:", EditorStyles.miniLabel);
                 if (GUILayout.Button("Write Claude config (npx — requires npm publish)"))
                 {
-                    WriteClaudeConfig();
+                    // Defer: runs claude CLI + dialog; must run outside OnGUI.
+                    pendingAction = () => WriteClaudeConfig();
                 }
             }
             else
@@ -294,14 +362,16 @@ namespace ScenePort.McpBridge.Editor
 
                 if (GUILayout.Button("Write Claude config (run claude mcp add-json)"))
                 {
-                    WriteClaudeConfig();
+                    // Defer: runs claude CLI + dialog; must run outside OnGUI.
+                    pendingAction = () => WriteClaudeConfig();
                 }
             }
         }
 
         private void DrawDiagnosticsSection()
         {
-            var hasBundled = !string.IsNullOrEmpty(BundledServerPath());
+            // Read cached value only; treat unresolved as "no bundled server".
+            var hasBundled = environmentResolved && !string.IsNullOrEmpty(cachedServerPath);
 
             EditorGUILayout.LabelField("Diagnostics", EditorStyles.boldLabel);
             EditorGUILayout.LabelField(
@@ -312,14 +382,21 @@ namespace ScenePort.McpBridge.Editor
 
             if (GUILayout.Button("Run doctor"))
             {
-                RunDoctor();
+                // Defer: runs a process (up to DoctorTimeoutSeconds); must run outside OnGUI.
+                pendingAction = () => RunDoctor();
             }
 
             if (!string.IsNullOrEmpty(doctorOutput))
             {
                 doctorScroll = EditorGUILayout.BeginScrollView(doctorScroll, GUILayout.MinHeight(80f), GUILayout.MaxHeight(220f));
-                EditorGUILayout.TextArea(doctorOutput, GUILayout.ExpandHeight(true));
-                EditorGUILayout.EndScrollView();
+                try
+                {
+                    EditorGUILayout.TextArea(doctorOutput, GUILayout.ExpandHeight(true));
+                }
+                finally
+                {
+                    EditorGUILayout.EndScrollView();
+                }
             }
         }
 
@@ -401,10 +478,36 @@ namespace ScenePort.McpBridge.Editor
             Repaint();
         }
 
+        /// <summary>
+        /// Resolves executables ("node", "claude") and the bundled server path into cached
+        /// fields. MUST run OUTSIDE the OnGUI render pass because ResolveExecutable spawns a
+        /// blocking login shell / `where` process. Called from OnEnable via delayCall and
+        /// from the "Refresh" button via the deferred-action queue (Update()).
+        /// </summary>
+        private void RefreshEnvironment()
+        {
+            try
+            {
+                cachedNodePath = ResolveExecutable("node");
+                cachedClaudePath = ResolveExecutable("claude");
+                cachedServerPath = BundledServerPath();
+            }
+            catch
+            {
+                // Best-effort; leave whatever resolved.
+            }
+            finally
+            {
+                environmentResolved = true;
+            }
+
+            Repaint();
+        }
+
         private void ConnectClaudeLocal()
         {
             var projectPath = status != null ? status.ProjectPath : SafeProjectPath();
-            var serverPath = BundledServerPath();
+            var serverPath = !string.IsNullOrEmpty(cachedServerPath) ? cachedServerPath : BundledServerPath();
             var fallbackCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath);
 
             if (string.IsNullOrEmpty(serverPath))
@@ -413,7 +516,7 @@ namespace ScenePort.McpBridge.Editor
                 return;
             }
 
-            var claude = ResolveExecutable("claude");
+            var claude = !string.IsNullOrEmpty(cachedClaudePath) ? cachedClaudePath : ResolveExecutable("claude");
             if (string.IsNullOrEmpty(claude))
             {
                 EditorGUIUtility.systemCopyBuffer = fallbackCommand;
@@ -461,7 +564,7 @@ namespace ScenePort.McpBridge.Editor
             // Codex has no register-by-CLI flow here; copy the TOML for the user to paste
             // into ~/.codex/config.toml.
             var projectPath = status != null ? status.ProjectPath : SafeProjectPath();
-            var serverPath = BundledServerPath();
+            var serverPath = !string.IsNullOrEmpty(cachedServerPath) ? cachedServerPath : BundledServerPath();
             if (string.IsNullOrEmpty(serverPath))
             {
                 SetMessage("Bundled server not found. Use the npx option below.", MessageType.Warning);
@@ -485,7 +588,7 @@ namespace ScenePort.McpBridge.Editor
             var fallback = ScenePortSetup.ClaudeAddCommand(projectPath);
             try
             {
-                var claude = ResolveExecutable("claude");
+                var claude = !string.IsNullOrEmpty(cachedClaudePath) ? cachedClaudePath : ResolveExecutable("claude");
                 if (string.IsNullOrEmpty(claude))
                 {
                     EditorGUIUtility.systemCopyBuffer = fallback;
@@ -530,7 +633,7 @@ namespace ScenePort.McpBridge.Editor
 
         private void RunDoctor()
         {
-            var serverPath = BundledServerPath();
+            var serverPath = !string.IsNullOrEmpty(cachedServerPath) ? cachedServerPath : BundledServerPath();
             var useLocal = !string.IsNullOrEmpty(serverPath);
 
             // Prefer the bundled server with a resolved node; fall back to npx.
@@ -538,7 +641,7 @@ namespace ScenePort.McpBridge.Editor
             string[] args;
             if (useLocal)
             {
-                var node = ResolveExecutable("node");
+                var node = !string.IsNullOrEmpty(cachedNodePath) ? cachedNodePath : ResolveExecutable("node");
                 if (string.IsNullOrEmpty(node))
                 {
                     doctorOutput =

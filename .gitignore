@@ -5,3 +5,7 @@ npm-debug.log*
 
 # Build/test artifacts
 **/coverage/
+
+# Generated at release time by scripts/collect-release-evidence.mjs (uploaded as a CI
+# artifact). The committed copy is a placeholder note, not a hand-maintained file.
+/RELEASE_EVIDENCE.md

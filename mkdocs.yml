@@ -57,8 +57,12 @@ nav:
           - Fix console errors: recipes/fix-console-errors.md
           - Debug play mode: recipes/debug-play-mode.md
           - Prepare build: recipes/prepare-build.md
+  - Reference:
+      - Tools and Resources: reference/tools.md
   - Architecture: architecture/ARCHITECTURE.md
-  - Security Model: security/SECURITY_MODEL.md
+  - Security:
+      - Security Model: security/SECURITY_MODEL.md
+      - Trust and Safety: security/TRUST_AND_SAFETY.md
   - Roadmap: roadmap/ROADMAP.md
   - Troubleshooting: playbooks/TROUBLESHOOTING.md
   - More docs:

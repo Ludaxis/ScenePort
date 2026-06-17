@@ -4,6 +4,14 @@ Point the agent at an unfamiliar scene; it captures the Scene and Game views, wa
 hierarchy and key components, and explains in plain language what the scene contains and how
 it is wired together.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:explain-scene prompt. Capture the Scene and Game views of my active
+> scene, walk the hierarchy and key components, and explain in plain language what this
+> scene contains and how it is wired.
+```
+
 ## When to use it
 
 - You opened someone else's scene (or your own from months ago) and need orientation fast.

@@ -3,6 +3,13 @@
 A quick orientation: summarize the active scene's hierarchy and current selection so you (and
 the agent) start with shared context.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:inspect-scene prompt. Summarize my active scene's hierarchy and current
+> selection so we start with shared context.
+```
+
 ## When to use it
 
 - You want a fast, terse snapshot of what is in the scene right now.

@@ -4,6 +4,14 @@ Hand the agent a reference image of a UI; it recreates the layout as real Unity 
 (`Canvas`, `RectTransform`, `Image`, `Text`/`TextMeshPro`), then captures the Game view to
 compare its result against your mockup.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:create-ui-from-screenshot prompt. Here is my UI mockup — recreate it as
+> real uGUI Canvas/RectTransform objects, then capture the Game view so we can compare it to
+> the reference. Validate authoring writes as a dry run first.
+```
+
 ## When to use it
 
 - You have a Figma export, a screenshot, or a hand sketch and want a first-pass Unity UI.

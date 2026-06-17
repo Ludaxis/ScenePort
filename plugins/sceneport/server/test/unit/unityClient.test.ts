@@ -94,6 +94,80 @@ describe("UnityBridgeClient token + headers", () => {
   });
 });
 
+describe("UnityBridgeClient POST idempotency", () => {
+  it("stamps a non-empty clientRequestId on the bridge-received body", async () => {
+    bridge = new FakeBridge({ "/create-game-object": () => ({ body: { status: "ok" } }) });
+    await bridge.start();
+    const c = new UnityBridgeClient({ baseUrl: bridge.url, source: "env-url" }, {});
+
+    await c.post("/create-game-object", { name: "X" });
+    const body = bridge.requests[0].body as Record<string, unknown>;
+    expect(body).toMatchObject({ name: "X" });
+    expect(typeof body.clientRequestId).toBe("string");
+    expect((body.clientRequestId as string).length).toBeGreaterThan(0);
+  });
+
+  it("does not add a clientRequestId to GET requests", async () => {
+    bridge = new FakeBridge({ "/selection": () => ({ body: { status: "ok" } }) });
+    await bridge.start();
+    const c = new UnityBridgeClient({ baseUrl: bridge.url, source: "env-url" }, {});
+
+    await c.get("/selection");
+    expect(bridge.requests[0].url).not.toContain("clientRequestId");
+  });
+
+  it("reuses the SAME clientRequestId across a rediscover retry", async () => {
+    const project = makeEmptyProject();
+    // bridge2 accepts; defined first so its URL is known when bridge1's handler
+    // rotates discovery to point at it (which makes rediscover() detect a change).
+    bridge2 = new FakeBridge({
+      "/health": () => ({ body: { status: "ok", projectId: "two" } }),
+      "/create-game-object": () => ({ body: { status: "ok" } }),
+    });
+    await bridge2.start();
+
+    // bridge1 replies 401 once and, as a side effect, rotates discovery to bridge2 so
+    // the client's 401-triggered rediscover lands on the fresh bridge and retries.
+    bridge = new FakeBridge({
+      "/health": () => ({ body: { status: "ok", projectId: "one" } }),
+      "/create-game-object": () => {
+        writeDiscovery(project, {
+          schemaVersion: 2,
+          url: bridge2!.url,
+          token: "two",
+          projectPath: project,
+          projectId: "two",
+          ownerLeaseId: "lease-two",
+          startedUtc: "two",
+          heartbeatUtc: new Date().toISOString(),
+        });
+        return { status: 401, body: { status: "error", error: "stale token" } };
+      },
+    });
+    await bridge.start();
+
+    writeDiscovery(project, {
+      schemaVersion: 2,
+      url: bridge.url,
+      token: "one",
+      projectPath: project,
+      projectId: "one",
+      ownerLeaseId: "lease-one",
+      startedUtc: "one",
+      heartbeatUtc: new Date().toISOString(),
+    });
+    const c = new UnityBridgeClient(undefined, {}, project);
+
+    await c.post("/create-game-object", { name: "Y" });
+
+    const first = bridge.requests.find((r) => r.url === "/create-game-object")?.body as Record<string, unknown>;
+    const second = bridge2.requests.find((r) => r.url === "/create-game-object")?.body as Record<string, unknown>;
+    expect(typeof first.clientRequestId).toBe("string");
+    expect((first.clientRequestId as string).length).toBeGreaterThan(0);
+    expect(second.clientRequestId).toBe(first.clientRequestId);
+  });
+});
+
 describe("UnityBridgeClient response parsing", () => {
   it("returns parsed JSON for ok responses", async () => {
     bridge = new FakeBridge({ "/health": () => ({ body: { status: "ok", port: 38987 } }) });

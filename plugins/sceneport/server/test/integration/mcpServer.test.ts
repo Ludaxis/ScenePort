@@ -24,6 +24,8 @@ const TOOL_NAMES = [
   "unity_set_serialized_property",
   "unity_asset_search",
   "unity_get_compilation_status",
+  "unity_get_compile_errors",
+  "unity_wait_for_idle",
   "unity_run_editmode_tests",
   "unity_run_playmode_tests",
   "unity_capture_game_view",
@@ -317,6 +319,81 @@ describe("MCP server error handling", () => {
       status: "error",
       error: { code: "editor.busy.compiling", retryable: true },
     });
+  });
+});
+
+describe("MCP server unity_wait_for_idle", () => {
+  it("polls compilation status until idle and surfaces compiler errors", async () => {
+    let calls = 0;
+    await connect({
+      "/health": okHealth,
+      "/compilation-status": () => {
+        calls += 1;
+        if (calls < 2) {
+          return { body: { status: "ok", isCompiling: true, isUpdating: false, reloadEpoch: 1, compilerMessages: [] } };
+        }
+        return {
+          body: {
+            status: "ok",
+            isCompiling: false,
+            isUpdating: false,
+            reloadEpoch: 2,
+            compilerMessages: [{ file: "Assets/A.cs", line: 3, column: 5, type: "error", message: "CS0103", assembly: "Assembly-CSharp" }],
+          },
+        };
+      },
+    });
+
+    const result = await client!.callTool({
+      name: "unity_wait_for_idle",
+      arguments: { pollIntervalMs: 100, timeoutMs: 5000 },
+    });
+    const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+    expect(payload.idle).toBe(true);
+    expect(payload.isCompiling).toBe(false);
+    expect(payload.isUpdating).toBe(false);
+    expect(payload.reloadEpoch).toBe(2);
+    expect(payload.compilerErrors).toBe(1);
+    expect(payload.compilerMessages[0].message).toBe("CS0103");
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  it("tolerates the bridge disappearing mid-reload and still resolves to idle", async () => {
+    // Simulate a domain reload: the bridge is up, then unreachable for a window
+    // (Unity restarting on a new port), then up again and idle. wait_for_idle must
+    // ride through the unreachable window via its transient-error catch.
+    let calls = 0;
+    const routes: Record<string, RouteHandler> = {
+      "/health": okHealth,
+      "/compilation-status": () => {
+        calls += 1;
+        return { body: { status: "ok", isCompiling: false, isUpdating: false, reloadEpoch: 9, compilerMessages: [] } };
+      },
+    };
+    bridge = new FakeBridge(routes);
+    await bridge.start();
+    // Stop the bridge so the very first poll hits a connection-refused (bridge.unreachable).
+    const baseUrl = bridge.url;
+    const port = bridge.port;
+    await bridge.stop();
+    client = await connectClient(baseUrl);
+
+    // Bring the bridge back on the SAME port after a short delay, mid-poll.
+    const restart = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      bridge = new FakeBridge(routes);
+      await bridge.startOnPort(port);
+    })();
+
+    const result = await client!.callTool({
+      name: "unity_wait_for_idle",
+      arguments: { pollIntervalMs: 100, timeoutMs: 5000 },
+    });
+    await restart;
+    const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+    expect(payload.idle).toBe(true);
+    expect(payload.reloadEpoch).toBe(9);
+    expect(calls).toBeGreaterThanOrEqual(1);
   });
 });
 

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "sceneport": {
-      "command": "node",
-      "args": ["./server/build/index.js"],
+      "command": "npx",
+      "args": ["-y", "sceneport-mcp"],
       "env": {},
       "timeout": 600000
     }

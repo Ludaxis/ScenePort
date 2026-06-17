@@ -64,7 +64,11 @@ export class UnityBridgeClient {
   async post(path: string, body: unknown) {
     this.resolveFresh();
     await this.guardIdentity();
-    return this.request("POST", path, undefined, body);
+    // Stamp a single idempotency key per public post() call. The bridge dedups on it,
+    // and because it is generated here (not inside request) the rediscover/401 retry
+    // reuses the SAME id rather than minting a new one.
+    const idempotentBody = withClientRequestId(body);
+    return this.request("POST", path, undefined, idempotentBody);
   }
 
   /**
@@ -327,6 +331,19 @@ export class UnityBridgeClient {
       httpStatus,
     });
   }
+}
+
+function withClientRequestId(body: unknown): unknown {
+  // Only object bodies carry the dedup key. If a clientRequestId is already present
+  // (e.g. the caller supplied one), keep it so retries stay stable.
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return body;
+  }
+  const record = body as Record<string, unknown>;
+  if (typeof record.clientRequestId === "string" && record.clientRequestId.length > 0) {
+    return record;
+  }
+  return { ...record, clientRequestId: crypto.randomUUID() };
 }
 
 function isLogicalErrorPayload(payload: unknown): boolean {

@@ -3,6 +3,14 @@
 Drive a short, scripted playtest session — enter play mode, send a few inputs, capture
 frames — and collect an agent-readable report with observations and recommendations.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:playtest-pilot prompt. Run a short scripted playtest of my game — enter
+> play mode, send the inputs I describe, capture frames, and give me a report with
+> observations and recommendations.
+```
+
 ## When to use it
 
 - You want a quick "does the core loop work?" pass without manually playing.

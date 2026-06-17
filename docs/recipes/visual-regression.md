@@ -4,6 +4,14 @@ Capture a known-good "golden" frame, make a change, then diff the current Game v
 the golden pixel-for-pixel. ScenePort returns a real diff image plus a `pixelDiffPercent`, so
 the agent can judge whether a visual change was intended.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:visual-regression prompt. Capture a golden frame of the current Game
+> view, then after my change diff against it and report the pixelDiffPercent plus whether
+> the difference looks intended.
+```
+
 ## When to use it
 
 - You refactored UI, materials, lighting, or layout and want to confirm nothing else shifted.

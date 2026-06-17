@@ -121,15 +121,33 @@ namespace ScenePort.McpBridge.Editor
 
         internal static object CompilationStatus(ScenePortRequest req, ScenePortContext ctx)
         {
-            return new CompilationStatusResponse
+            var response = new CompilationStatusResponse
             {
                 IsCompiling = EditorApplication.isCompiling,
                 IsUpdating = EditorApplication.isUpdating,
                 IsPlaying = EditorApplication.isPlaying,
                 IsPlayingOrWillChangePlaymode = EditorApplication.isPlayingOrWillChangePlaymode,
                 TimeSinceStartup = EditorApplication.timeSinceStartup,
+                ReloadEpoch = ScenePortCompilation.ReloadEpoch,
                 RecentErrors = ctx.Console.ErrorSnapshot(50),
             };
+
+            var records = ScenePortCompilation.CompilerMessages;
+            for (var i = 0; i < records.Count; i++)
+            {
+                var record = records[i];
+                response.CompilerMessages.Add(new CompilerMessageDto
+                {
+                    File = record.File,
+                    Line = record.Line,
+                    Column = record.Column,
+                    Type = record.Type,
+                    Message = record.Message,
+                    Assembly = record.Assembly,
+                });
+            }
+
+            return response;
         }
 
         internal static object AuditLog(ScenePortRequest req, ScenePortContext ctx)

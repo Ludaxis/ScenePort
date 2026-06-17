@@ -13308,7 +13308,8 @@ var UnityBridgeClient = class {
   async post(path, body) {
     this.resolveFresh();
     await this.guardIdentity();
-    return this.request("POST", path, void 0, body);
+    const idempotentBody = withClientRequestId(body);
+    return this.request("POST", path, void 0, idempotentBody);
   }
   /**
    * Health plus discovery/identity metadata for unity_status. Never throws on identity
@@ -13515,6 +13516,16 @@ var UnityBridgeClient = class {
     });
   }
 };
+function withClientRequestId(body) {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return body;
+  }
+  const record2 = body;
+  if (typeof record2.clientRequestId === "string" && record2.clientRequestId.length > 0) {
+    return record2;
+  }
+  return { ...record2, clientRequestId: crypto.randomUUID() };
+}
 function isLogicalErrorPayload(payload) {
   return Boolean(payload && typeof payload === "object" && payload.status === "error");
 }
@@ -13550,7 +13561,7 @@ function categoryForStatus(status) {
 }
 
 // src/version.ts
-var VERSION = "0.9.1";
+var VERSION = "1.0.0";
 
 // src/doctor.ts
 function check2(name, status, detail) {
@@ -22476,11 +22487,102 @@ function createScenePortServer(client) {
     "unity_get_compilation_status",
     {
       title: "Unity Compilation Status",
-      description: "Read Unity script compilation, asset refresh, play-mode transition, and recent compiler error state.",
+      description: "Read Unity script compilation, asset refresh, play-mode transition, and recent compiler state. Returns structured compiler messages (compilerMessages[] with file/line/column/type/message/assembly), isCompiling, isUpdating, and reloadEpoch alongside the legacy fields.",
       inputSchema: {},
       annotations: { readOnlyHint: true }
     },
     toolGet("/compilation-status")
+  );
+  function compilerMessages(payload) {
+    if (payload === null || typeof payload !== "object") {
+      return [];
+    }
+    const raw = payload.compilerMessages;
+    return Array.isArray(raw) ? raw.filter((m) => m !== null && typeof m === "object") : [];
+  }
+  function countByType(messages, type) {
+    return messages.filter((m) => m.type === type).length;
+  }
+  server.registerTool(
+    "unity_get_compile_errors",
+    {
+      title: "Unity Compile Errors",
+      description: "Read only the error-level Unity compiler messages from the current compilation status.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async () => {
+      try {
+        const status = await client.get("/compilation-status");
+        const messages = compilerMessages(status);
+        const errors = messages.filter((m) => m.type === "error");
+        return jsonResult({
+          status: "ok",
+          isCompiling: status.isCompiling === true,
+          compilerErrors: errors.length,
+          compilerMessages: errors
+        });
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
+  );
+  server.registerTool(
+    "unity_wait_for_idle",
+    {
+      title: "Wait For Unity Idle",
+      description: "Poll the Unity bridge until script compilation and asset refresh finish, tolerating the bridge briefly disappearing during a domain reload, then return the final compiler messages. Use this after a code change before relying on the editor.",
+      inputSchema: {
+        timeoutMs: external_exports.number().int().min(500).max(12e4).default(6e4).optional(),
+        pollIntervalMs: external_exports.number().int().min(100).max(1e4).default(500).optional()
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ timeoutMs, pollIntervalMs }) => {
+      const overallTimeoutMs = timeoutMs ?? 6e4;
+      const intervalMs = pollIntervalMs ?? 500;
+      const deadline = Date.now() + overallTimeoutMs;
+      try {
+        while (true) {
+          let status;
+          try {
+            status = await client.get("/compilation-status");
+          } catch (error2) {
+            const code = error2 instanceof ScenePortBridgeError ? error2.code : void 0;
+            const transient = code === "bridge.timeout" || code === "bridge.unreachable";
+            if (!transient || Date.now() >= deadline) {
+              if (transient) {
+                return jsonResult({ idle: false, timedOut: true });
+              }
+              throw error2;
+            }
+            await sleep(intervalMs);
+            continue;
+          }
+          const record2 = status !== null && typeof status === "object" ? status : {};
+          const isCompiling = record2.isCompiling === true;
+          const isUpdating = record2.isUpdating === true;
+          if (!isCompiling && !isUpdating) {
+            const messages = compilerMessages(status);
+            return jsonResult({
+              idle: true,
+              reloadEpoch: typeof record2.reloadEpoch === "number" ? record2.reloadEpoch : void 0,
+              isCompiling: false,
+              isUpdating: false,
+              compilerErrors: countByType(messages, "error"),
+              compilerWarnings: countByType(messages, "warning"),
+              compilerMessages: messages
+            });
+          }
+          if (Date.now() >= deadline) {
+            return jsonResult({ idle: false, timedOut: true });
+          }
+          await sleep(intervalMs);
+        }
+      } catch (error2) {
+        return errorResult(error2);
+      }
+    }
   );
   function registerRunTestsTool(name, mode) {
     server.registerTool(
@@ -23038,7 +23140,7 @@ function createScenePortServer(client) {
     "unity_run_scenario",
     {
       title: "Run Unity Scenario",
-      description: "Run a structured ScenePort scenario harness and write a report.",
+      description: "PREVIEW (partially implemented in v1.0): Run a structured ScenePort scenario harness and write a report. The scenario harness is incomplete and must NOT be relied on as a pass/fail gate.",
       inputSchema: {
         name: external_exports.string().min(1).max(128).optional(),
         steps: external_exports.array(external_exports.record(external_exports.unknown())).max(100).optional()
@@ -23051,7 +23153,7 @@ function createScenePortServer(client) {
     "unity_wait_for_scenario",
     {
       title: "Wait For Unity Scenario",
-      description: "Read the current scenario status.",
+      description: "PREVIEW (partially implemented in v1.0): Read the current scenario status. Part of the incomplete scenario harness and must NOT be relied on as a pass/fail gate.",
       inputSchema: { scenarioRunId: external_exports.string().min(1).max(128).optional() },
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
@@ -23067,7 +23169,7 @@ function createScenePortServer(client) {
     "unity_get_scenario_report",
     {
       title: "Get Unity Scenario Report",
-      description: "Read a scenario proof report.",
+      description: "PREVIEW (partially implemented in v1.0): Read a scenario proof report. Part of the incomplete scenario harness and must NOT be relied on as a pass/fail gate.",
       inputSchema: { scenarioRunId: external_exports.string().min(1).max(128).optional() },
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
@@ -23093,7 +23195,7 @@ function createScenePortServer(client) {
     "unity_check_perf_budgets",
     {
       title: "Check Unity Perf Budgets",
-      description: "Check a single lightweight metric against a budget.",
+      description: "PREVIEW (partially implemented in v1.0): Check a single lightweight metric against a budget. The perf-budget checks are not fully implemented and must NOT be relied on as a pass/fail gate.",
       inputSchema: {
         metric: external_exports.string().min(1).max(128),
         max: external_exports.number().int()

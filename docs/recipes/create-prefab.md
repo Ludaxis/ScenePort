@@ -3,6 +3,13 @@
 Assemble GameObjects and components into a reusable prefab saved under `Assets/`, using
 ScenePort's safe, dry-run-first authoring path.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:create-prefab prompt. Assemble the GameObjects/components I describe into
+> a reusable prefab under Assets/, validating the authoring write as a dry run first.
+```
+
 ## When to use it
 
 - You built a GameObject in the scene and want it captured as a reusable prefab.

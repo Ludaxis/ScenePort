@@ -3,6 +3,13 @@
 Draft a PlayMode test that asserts runtime behavior, then run it through the Unity Test Runner
 and report results.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:write-playmode-test prompt. Draft a PlayMode test for the behavior I
+> describe, run it with unity_tests_run, and report pass/fail with the relevant artifacts.
+```
+
 ## When to use it
 
 - You fixed a bug and want a regression test that exercises play-mode behavior.

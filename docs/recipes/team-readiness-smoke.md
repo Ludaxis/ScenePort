@@ -3,6 +3,14 @@
 An end-to-end readiness check that the ScenePort bridge, perception, and safe authoring all
 work against a project — the smoke test a team runs to confirm the integration is healthy.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:team-readiness-smoke prompt. Run an end-to-end readiness check — bridge
+> health, perception, and a safe authoring dry run — and tell me whether the integration is
+> healthy.
+```
+
 ## When to use it
 
 - A teammate just set ScenePort up and wants to confirm it works end to end.

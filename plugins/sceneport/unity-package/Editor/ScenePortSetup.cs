@@ -23,8 +23,8 @@ namespace ScenePort.McpBridge.Editor
         /// <summary>Environment variable the server reads to locate this Unity project.</summary>
         internal const string ProjectPathEnvVar = "SCENEPORT_PROJECT_PATH";
 
-        internal const string DocsUrl = "https://github.com/sceneport/sceneport-unity-mcp#readme";
-        internal const string RepoUrl = "https://github.com/sceneport/sceneport-unity-mcp";
+        internal const string DocsUrl = "https://github.com/Ludaxis/ScenePort#readme";
+        internal const string RepoUrl = "https://github.com/Ludaxis/ScenePort";
 
         /// <summary>
         /// Immutable snapshot of bridge/project status rendered by the window. Assembled

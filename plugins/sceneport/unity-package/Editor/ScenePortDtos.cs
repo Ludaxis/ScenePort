@@ -361,7 +361,19 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("isPlaying")] public bool IsPlaying;
         [JsonProperty("isPlayingOrWillChangePlaymode")] public bool IsPlayingOrWillChangePlaymode;
         [JsonProperty("timeSinceStartup")] public double TimeSinceStartup;
+        [JsonProperty("reloadEpoch")] public int ReloadEpoch;
         [JsonProperty("recentErrors")] public List<LogEntryDto> RecentErrors = new List<LogEntryDto>();
+        [JsonProperty("compilerMessages")] public List<CompilerMessageDto> CompilerMessages = new List<CompilerMessageDto>();
+    }
+
+    internal sealed class CompilerMessageDto
+    {
+        [JsonProperty("file")] public string File;
+        [JsonProperty("line")] public int Line;
+        [JsonProperty("column")] public int Column;
+        [JsonProperty("type")] public string Type;
+        [JsonProperty("message")] public string Message;
+        [JsonProperty("assembly")] public string Assembly;
     }
 
     internal sealed class FailedTestDto

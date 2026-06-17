@@ -1,5 +1,6 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { ScenePortBridgeError } from "./bridgeError.js";
 import { encodeSerializedValue, joinCsv, objectLocatorSchema, serializedValueSchema, vector3Schema } from "./encoding.js";
 import { errorResult, imageResult, jsonResult } from "./toolResult.js";
 import type { UnityBridgeClient } from "./unityClient.js";
@@ -306,11 +307,113 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "unity_get_compilation_status",
     {
       title: "Unity Compilation Status",
-      description: "Read Unity script compilation, asset refresh, play-mode transition, and recent compiler error state.",
+      description:
+        "Read Unity script compilation, asset refresh, play-mode transition, and recent compiler state. Returns structured compiler messages (compilerMessages[] with file/line/column/type/message/assembly), isCompiling, isUpdating, and reloadEpoch alongside the legacy fields.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
     toolGet("/compilation-status"),
+  );
+
+  function compilerMessages(payload: unknown): Array<Record<string, unknown>> {
+    if (payload === null || typeof payload !== "object") {
+      return [];
+    }
+    const raw = (payload as { compilerMessages?: unknown }).compilerMessages;
+    return Array.isArray(raw) ? (raw.filter((m) => m !== null && typeof m === "object") as Array<Record<string, unknown>>) : [];
+  }
+
+  function countByType(messages: Array<Record<string, unknown>>, type: string): number {
+    return messages.filter((m) => m.type === type).length;
+  }
+
+  server.registerTool(
+    "unity_get_compile_errors",
+    {
+      title: "Unity Compile Errors",
+      description: "Read only the error-level Unity compiler messages from the current compilation status.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async () => {
+      try {
+        const status = await client.get("/compilation-status");
+        const messages = compilerMessages(status);
+        const errors = messages.filter((m) => m.type === "error");
+        return jsonResult({
+          status: "ok",
+          isCompiling: (status as { isCompiling?: unknown }).isCompiling === true,
+          compilerErrors: errors.length,
+          compilerMessages: errors,
+        });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "unity_wait_for_idle",
+    {
+      title: "Wait For Unity Idle",
+      description:
+        "Poll the Unity bridge until script compilation and asset refresh finish, tolerating the bridge briefly disappearing during a domain reload, then return the final compiler messages. Use this after a code change before relying on the editor.",
+      inputSchema: {
+        timeoutMs: z.number().int().min(500).max(120000).default(60000).optional(),
+        pollIntervalMs: z.number().int().min(100).max(10000).default(500).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ timeoutMs, pollIntervalMs }) => {
+      const overallTimeoutMs = timeoutMs ?? 60000;
+      const intervalMs = pollIntervalMs ?? 500;
+      const deadline = Date.now() + overallTimeoutMs;
+      try {
+        while (true) {
+          let status: unknown;
+          try {
+            status = await client.get("/compilation-status");
+          } catch (error) {
+            // While Unity reloads the domain the bridge stops answering. A transient
+            // network error (timeout/unreachable) means "still busy", not failure:
+            // keep polling until the overall deadline elapses.
+            const code = error instanceof ScenePortBridgeError ? error.code : undefined;
+            const transient = code === "bridge.timeout" || code === "bridge.unreachable";
+            if (!transient || Date.now() >= deadline) {
+              if (transient) {
+                return jsonResult({ idle: false, timedOut: true });
+              }
+              throw error;
+            }
+            await sleep(intervalMs);
+            continue;
+          }
+
+          const record = (status !== null && typeof status === "object" ? status : {}) as Record<string, unknown>;
+          const isCompiling = record.isCompiling === true;
+          const isUpdating = record.isUpdating === true;
+          if (!isCompiling && !isUpdating) {
+            const messages = compilerMessages(status);
+            return jsonResult({
+              idle: true,
+              reloadEpoch: typeof record.reloadEpoch === "number" ? record.reloadEpoch : undefined,
+              isCompiling: false,
+              isUpdating: false,
+              compilerErrors: countByType(messages, "error"),
+              compilerWarnings: countByType(messages, "warning"),
+              compilerMessages: messages,
+            });
+          }
+
+          if (Date.now() >= deadline) {
+            return jsonResult({ idle: false, timedOut: true });
+          }
+          await sleep(intervalMs);
+        }
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   );
 
   function registerRunTestsTool(name: "unity_run_editmode_tests" | "unity_run_playmode_tests", mode: "editmode" | "playmode") {
@@ -909,7 +1012,8 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "unity_run_scenario",
     {
       title: "Run Unity Scenario",
-      description: "Run a structured ScenePort scenario harness and write a report.",
+      description:
+        "PREVIEW (partially implemented in v1.0): Run a structured ScenePort scenario harness and write a report. The scenario harness is incomplete and must NOT be relied on as a pass/fail gate.",
       inputSchema: {
         name: z.string().min(1).max(128).optional(),
         steps: z.array(z.record(z.unknown())).max(100).optional(),
@@ -923,7 +1027,8 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "unity_wait_for_scenario",
     {
       title: "Wait For Unity Scenario",
-      description: "Read the current scenario status.",
+      description:
+        "PREVIEW (partially implemented in v1.0): Read the current scenario status. Part of the incomplete scenario harness and must NOT be relied on as a pass/fail gate.",
       inputSchema: { scenarioRunId: z.string().min(1).max(128).optional() },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -940,7 +1045,8 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "unity_get_scenario_report",
     {
       title: "Get Unity Scenario Report",
-      description: "Read a scenario proof report.",
+      description:
+        "PREVIEW (partially implemented in v1.0): Read a scenario proof report. Part of the incomplete scenario harness and must NOT be relied on as a pass/fail gate.",
       inputSchema: { scenarioRunId: z.string().min(1).max(128).optional() },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -968,7 +1074,8 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
     "unity_check_perf_budgets",
     {
       title: "Check Unity Perf Budgets",
-      description: "Check a single lightweight metric against a budget.",
+      description:
+        "PREVIEW (partially implemented in v1.0): Check a single lightweight metric against a budget. The perf-budget checks are not fully implemented and must NOT be relied on as a pass/fail gate.",
       inputSchema: {
         metric: z.string().min(1).max(128),
         max: z.number().int(),

@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  # Required for npm provenance (publishing with a signed attestation).
+  id-token: write
 
 jobs:
   release:
@@ -55,6 +57,25 @@ jobs:
           test -f plugins/sceneport/.mcp.json
           test -f plugins/sceneport/server/build/index.js
           test -f plugins/sceneport/unity-package/package.json
+
+      # Publish the server to npm with provenance. Runs only on v* tags (the trigger),
+      # after lint/typecheck/test/build above have passed. Tolerates a re-published tag
+      # ("already published") so re-running a release does not fail the job.
+      - name: Configure npm registry for publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish server to npm (provenance)
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: plugins/sceneport/server
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --provenance --access public \
+            || echo "::warning::npm publish skipped or already published for this version"
 
       - name: Skip when no Unity license
         if: env.UNITY_LICENSE == ''

@@ -178,12 +178,32 @@ namespace ScenePort.McpBridge.Editor
                 return new ScenePortDispatchResult(StatusCodeFor(denied), ScenePortJson.Serialize(denied));
             }
 
+            // POST idempotency: a mutating request that repeats a non-empty client-request-id
+            // returns the prior response verbatim instead of re-running the state-changing
+            // handler. Reads (GET) and read-only POSTs are never deduped. Dispatch runs on the
+            // Unity main thread (the bridge marshals every request), so cache access here is
+            // already serialized; the cache adds its own lock for defense in depth.
+            var mutatingPost = route.Mutating && string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase);
+            var clientRequestId = mutatingPost ? request.ExtractString("clientRequestId", null) : null;
+            if (mutatingPost && !string.IsNullOrEmpty(clientRequestId)
+                && ScenePortIdempotencyCache.TryGet(clientRequestId, out var cached))
+            {
+                return cached;
+            }
+
             var result = route.Handler(request, context);
             if (ShouldAudit(method, route))
             {
                 context.Audit?.Record(method, normalized, request, result);
             }
-            return new ScenePortDispatchResult(StatusCodeFor(result), ScenePortJson.Serialize(result));
+
+            var dispatch = new ScenePortDispatchResult(StatusCodeFor(result), ScenePortJson.Serialize(result));
+            if (mutatingPost && !string.IsNullOrEmpty(clientRequestId))
+            {
+                ScenePortIdempotencyCache.Store(clientRequestId, dispatch);
+            }
+
+            return dispatch;
         }
 
         private static ScenePortRoute Route(Func<ScenePortRequest, ScenePortContext, object> handler, string group, bool mutating, string methods = null)
@@ -230,6 +250,84 @@ namespace ScenePort.McpBridge.Editor
         {
             var trimmed = string.IsNullOrEmpty(path) ? string.Empty : path.TrimEnd('/');
             return string.IsNullOrEmpty(trimmed) ? "/health" : trimmed;
+        }
+    }
+
+    /// <summary>
+    /// Bounded LRU dedup cache keyed by client-request-id, holding the prior dispatch result.
+    /// Used only for mutating POST requests so a retried write (same id) returns the original
+    /// response instead of mutating twice. Capacity-bounded with oldest-first eviction so a
+    /// long-lived editor session cannot grow it without limit. Thread-safe.
+    /// </summary>
+    internal static class ScenePortIdempotencyCache
+    {
+        private const int Capacity = 64;
+
+        private static readonly object Gate = new object();
+
+        // Insertion-ordered: a Dictionary for O(1) lookup plus a Queue tracking key age for
+        // O(1) eviction of the oldest entry once Capacity is exceeded.
+        private static readonly Dictionary<string, ScenePortDispatchResult> Entries =
+            new Dictionary<string, ScenePortDispatchResult>(StringComparer.Ordinal);
+        private static readonly Queue<string> Order = new Queue<string>();
+
+        internal static bool TryGet(string id, out ScenePortDispatchResult result)
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                result = null;
+                return false;
+            }
+
+            lock (Gate)
+            {
+                return Entries.TryGetValue(id, out result);
+            }
+        }
+
+        internal static void Store(string id, ScenePortDispatchResult result)
+        {
+            if (string.IsNullOrEmpty(id) || result == null)
+            {
+                return;
+            }
+
+            lock (Gate)
+            {
+                if (Entries.ContainsKey(id))
+                {
+                    // First write wins; keep the original response for a repeated id.
+                    return;
+                }
+
+                Entries[id] = result;
+                Order.Enqueue(id);
+                while (Order.Count > Capacity)
+                {
+                    var oldest = Order.Dequeue();
+                    Entries.Remove(oldest);
+                }
+            }
+        }
+
+        internal static int Count
+        {
+            get
+            {
+                lock (Gate)
+                {
+                    return Entries.Count;
+                }
+            }
+        }
+
+        internal static void Clear()
+        {
+            lock (Gate)
+            {
+                Entries.Clear();
+                Order.Clear();
+            }
         }
     }
 

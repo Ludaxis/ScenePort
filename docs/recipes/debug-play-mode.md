@@ -3,6 +3,13 @@
 Enter play mode, observe live runtime state and logs, and diagnose a feature that misbehaves
 only while the game is running.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:debug-play-mode prompt. Enter play mode, watch the runtime state and
+> logs while I reproduce the bug, and tell me what is going wrong and why.
+```
+
 ## When to use it
 
 - A bug reproduces at runtime but not in edit mode.

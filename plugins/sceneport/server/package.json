@@ -1,6 +1,6 @@
 {
   "name": "sceneport-mcp",
-  "version": "0.9.1",
+  "version": "1.0.0",
   "description": "MCP stdio server for the ScenePort Unity Editor bridge.",
   "type": "module",
   "license": "MIT",

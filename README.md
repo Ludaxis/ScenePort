@@ -25,10 +25,33 @@ through typed tools instead of guessing from files alone. Your agent stops flyin
 
 ## 60-Second Setup
 
-Three steps to a connected agent that can see your editor.
+The fastest path needs **no npm publish, no clone, and no build** — the MCP server is
+bundled inside the Unity package and the Setup window wires it up for you.
 
-**1. Add the MCP server to your client.** No clone, no build — `npx` fetches the published
-package.
+**1. Install the Unity bridge package.** In Unity:
+`Window > Package Manager > + > Add package from git URL...` (or **Add package from
+disk...** for a local checkout) and point it at the ScenePort UPM package. The bridge
+**auto-starts** when the editor loads (it is `[InitializeOnLoad]`), picking the first free
+port in `38987–38996` and writing its port and per-project token to
+`Library/ScenePort/bridge.json`.
+
+**2. Open `Tools > ScenePort > Setup` in Unity and click "Connect Claude (local)"** (or
+**"Connect Codex (local)"**). When the bundled server is found, those two buttons are the
+first thing you see; the window resolves `claude`/`node` for you, registers the bundled
+server, and shows the discovered port and token state. (The Setup window does **not** start
+the bridge — the bridge is already running on its own.)
+
+**3. Start a Claude Code or Codex session and ask:**
+
+```text
+Use ScenePort to inspect my active Unity scene and summarize the hierarchy.
+```
+
+### Alternative: npx (after the package is published to npm)
+
+Once `sceneport-mcp` is published to npm, you can skip the bundled-local path and point your
+client at it directly with `npx`. This path is **not available until the package is
+published.**
 
 Claude Code:
 
@@ -49,25 +72,6 @@ Codex (`~/.codex/config.toml`):
 command = "npx"
 args = ["-y", "sceneport-mcp"]
 env = { SCENEPORT_PROJECT_PATH = "/absolute/path/to/YourUnityProject" }
-```
-
-Or let ScenePort write the config for you:
-
-```bash
-npx -y sceneport-mcp init
-npx -y sceneport-mcp config claude --write
-```
-
-**2. Install the Unity bridge package.** In Unity:
-`Window > Package Manager > + > Add package from git URL...` (or **Add package from
-disk...** for a local checkout) and point it at the ScenePort UPM package.
-
-**3. Open `Tools > ScenePort > Setup` in Unity and click Connect.** The Setup window starts
-the local bridge, shows the discovered port and token state, and confirms your MCP client is
-linked. Then start a thread and ask:
-
-```text
-Use ScenePort to inspect my active Unity scene and summarize the hierarchy.
 ```
 
 See [Detailed Setup](#detailed-setup) below for the bridge port range, `SCENEPORT_PROJECT_PATH`,
@@ -121,8 +125,9 @@ Browse all workflows in the **[Recipe Gallery](docs/recipes/README.md)**.
 
 ## What You Get
 
-- A TypeScript MCP stdio server, published to npm as `sceneport-mcp` and bundled at
-  `plugins/sceneport/server/build/index.js` for plugin installs
+- A TypeScript MCP stdio server, bundled inside the Unity package (and at
+  `plugins/sceneport/server/build/index.js` for plugin installs) and packaged for npm
+  publishing as `sceneport-mcp`
 - A Unity Package Manager editor bridge with a `Tools > ScenePort > Setup` window
 - Vision tools that return real MCP image content blocks the model can see
 - Pixel-diff golden frames with a per-pixel diff image and `pixelDiffPercent`
@@ -201,72 +206,65 @@ Auth Token` in the editor. See the
 
 ## Tools
 
-Core tools:
+Tools are grouped by the task they serve. The full reference, with one line per tool, lives
+in [Tools & Resources reference](docs/reference/tools.md).
 
-- `unity_status`
-- `unity_scene_hierarchy`
-- `unity_selection`
-- `unity_console_logs`
-- `unity_get_game_object`
-- `unity_get_components`
-- `unity_create_game_object`
-- `unity_set_transform`
-- `unity_add_component`
-- `unity_set_serialized_property`
-- `unity_asset_search`
-- `unity_get_compilation_status`
-- `unity_run_editmode_tests`
-- `unity_run_playmode_tests`
-- `unity_capture_game_view`
-- `unity_enter_play_mode`
-- `unity_exit_play_mode`
-- `unity_start_playtest`
-- `unity_stop_playtest`
-- `unity_playtest_status`
-- `unity_wait`
-- `unity_send_key`
-- `unity_send_click`
-- `unity_capture_playtest_frame`
-- `unity_get_playtest_report`
-- `unity_audit_log`
+**Perceive** — read the live editor (read-only):
 
-Perception, proof, diagnostics, and safe authoring tools:
+- `unity_status`, `unity_scene_hierarchy`, `unity_selection`, `unity_console_logs`,
+  `unity_console_stream`
+- `unity_get_game_object`, `unity_get_components`, `unity_query_scene`,
+  `unity_query_components`, `unity_read_serialized_properties`
+- `unity_scene_view_state`, `unity_capture_scene_view`, `unity_capture_game_view`
+- `unity_runtime_status`, `unity_query_runtime`, `unity_get_runtime_object`
+- `unity_asset_search`, `unity_asset_graph`, `unity_get_compilation_status`
 
-- `unity_query_scene`
-- `unity_query_components`
-- `unity_read_serialized_properties`
-- `unity_scene_view_state`
-- `unity_capture_scene_view`
-- `unity_runtime_status`
-- `unity_query_runtime`
-- `unity_get_runtime_object`
-- `unity_console_stream`
-- `unity_profiler_snapshot`
-- `unity_asset_graph`
-- `unity_tests_run`
-- `unity_tests_wait`
-- `unity_tests_artifacts`
-- `unity_assert_state`
-- `unity_capture_golden_frame`
-- `unity_compare_golden_frame`
-- `unity_run_scenario`
-- `unity_wait_for_scenario`
-- `unity_get_scenario_report`
-- `unity_perf_probe`
-- `unity_check_perf_budgets`
-- `unity_diagnostics`
-- `unity_validate_authoring_write`
-- `unity_authoring_batch`
-- `unity_create_script`
-- `unity_create_material`
-- `unity_create_prefab`
-- `unity_menu_item_allowlist`
-- `unity_execute_menu_item`
+**Author** — make small, typed, Undo-backed edits (today: uGUI Canvas + core scene/asset
+authoring):
+
+- `unity_create_game_object`, `unity_set_transform`, `unity_add_component`,
+  `unity_set_serialized_property`
+- `unity_validate_authoring_write`, `unity_authoring_batch` (dry-run first; transactional)
+- `unity_create_script`, `unity_create_material`, `unity_create_prefab`
+- `unity_menu_item_allowlist`, `unity_execute_menu_item` (exact-match allowlist only)
+
+**Test** — drive the Unity Test Runner and assert state:
+
+- `unity_tests_run`, `unity_tests_wait`, `unity_tests_artifacts`, `unity_assert_state`
+- `unity_capture_golden_frame`, `unity_compare_golden_frame`
+
+> `unity_tests_run` (with `unity_tests_wait` / `unity_tests_artifacts`) **supersedes** the
+> older `unity_run_editmode_tests` / `unity_run_playmode_tests` pair, which remain for
+> backward compatibility. Prefer `unity_tests_run` for new workflows.
+
+**Playtest** — enter play mode and interact:
+
+- `unity_enter_play_mode`, `unity_exit_play_mode`, `unity_wait`
+- `unity_start_playtest`, `unity_stop_playtest`, `unity_playtest_status`
+- `unity_send_key`, `unity_send_click`, `unity_capture_playtest_frame`,
+  `unity_get_playtest_report`
+
+**Diagnose** — health, audit, and budgets:
+
+- `unity_diagnostics`, `unity_audit_log`
+- `unity_run_scenario`, `unity_wait_for_scenario`, `unity_get_scenario_report` (preview)
+- `unity_perf_probe`, `unity_check_perf_budgets` (preview)
+
+> **Preview in v1.0:** the scenario tools (`unity_run_scenario`, `unity_wait_for_scenario`,
+> `unity_get_scenario_report`) and the perf-budget tools (`unity_perf_probe`,
+> `unity_check_perf_budgets`) are **preview** surfaces — they report results for an agent to
+> reason over, but are **not pass/fail CI gates** yet.
 
 The capture tools (`unity_capture_game_view`, `unity_capture_scene_view`,
 `unity_capture_playtest_frame`, `unity_capture_golden_frame`) return real MCP **image content
 blocks** the model can see (`inline` defaults to true, `maxEdge` defaults to 1024).
 `unity_compare_golden_frame` returns a per-pixel diff image plus `pixelDiffPercent`.
+
+### Scope today
+
+ScenePort authors **uGUI Canvas UIs today**; a perf profiler suite and dedicated
+UI-authoring tools land in **v1.1**. The scenario and perf-budget tools above are previews,
+not gates, in v1.0.
 
 ## Resources
 
@@ -331,6 +329,8 @@ for example transcripts and tips.
 ## Project Docs
 
 - [Recipe Gallery](docs/recipes/README.md)
+- [Tools & Resources Reference](docs/reference/tools.md)
+- [Trust & Safety](docs/security/TRUST_AND_SAFETY.md)
 - [Product Brief](docs/product/PRODUCT_BRIEF.md)
 - [Team Charter](docs/product/TEAM_CHARTER.md)
 - [Architecture](docs/architecture/ARCHITECTURE.md)

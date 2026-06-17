@@ -3,6 +3,13 @@
 Triage the current Unity console, group the errors, and propose targeted fixes — a focused,
 single-pass complement to the looping [`sceneport:self-heal`](self-heal.md) recipe.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:fix-console-errors prompt. Read my Unity console, group the errors by
+> root cause, and propose a targeted fix for each — do not apply anything until I approve.
+```
+
 ## When to use it
 
 - You want to understand what is red in the console before deciding how to fix it.

@@ -3,6 +3,13 @@
 Run pre-build checks — compilation, tests, and performance budgets — and report blockers
 before you kick off a player build.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:prepare-build prompt. Run my pre-build checks — compilation, tests, and
+> perf budgets (preview) — and report any blockers before I start a player build.
+```
+
 ## When to use it
 
 - Before a build or release, to catch red flags early.

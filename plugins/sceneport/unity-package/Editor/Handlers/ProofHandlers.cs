@@ -263,17 +263,34 @@ namespace ScenePort.McpBridge.Editor
             {
                 status = "ok",
                 scenarioRunId = id,
-                state = "finished",
+                state = "preview",
+                implemented = false,
                 startedUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
-                message = "Scenario harness recorded a no-op proof run.",
+                note = "Scenario harness is a v1.0 preview — no steps were executed or asserted.",
             };
             File.WriteAllText(reportPath, ScenePortJson.Serialize(report));
-            return new { status = "ok", scenarioRunId = id, reportPath };
+            return new
+            {
+                status = "ok",
+                scenarioRunId = id,
+                state = "preview",
+                implemented = false,
+                note = "Scenario harness is a v1.0 preview — no steps were executed or asserted.",
+                reportPath,
+            };
         }
 
         internal static object ScenarioStatus(ScenePortRequest req, ScenePortContext ctx)
         {
-            return new { status = "ok", state = "finished" };
+            var runId = SafeId(req.ExtractString("scenarioRunId", req.GetString("scenarioRunId", "latest")));
+            return new
+            {
+                status = "ok",
+                scenarioRunId = runId,
+                state = "preview",
+                implemented = false,
+                note = "Scenario harness is a v1.0 preview — no steps were executed or asserted.",
+            };
         }
 
         internal static object ScenarioWait(ScenePortRequest req, ScenePortContext ctx)
@@ -306,14 +323,36 @@ namespace ScenePort.McpBridge.Editor
             var metric = req.ExtractString("metric", req.GetString("metric", "totalAllocatedMemory"));
             var max = req.ExtractInt("max", req.GetInt("max", int.MaxValue));
             var metrics = BuildMetrics(null);
-            var actual = metrics.Metrics.ContainsKey(metric) ? Convert.ToInt64(metrics.Metrics[metric], CultureInfo.InvariantCulture) : 0;
+
+            // Only metrics we actually measured (the memory/counters in BuildMetrics) can be
+            // evaluated. An unknown metric is reported as not-evaluated and never passed, so a
+            // budget we cannot measure can never produce a false green.
+            var evaluated = metrics.Metrics.ContainsKey(metric);
+            if (!evaluated)
+            {
+                return new
+                {
+                    status = "ok",
+                    metric,
+                    max,
+                    evaluated = false,
+                    passed = false,
+                    actual = (object)null,
+                    note = "Metric '" + metric + "' is not measured by this bridge; budget was not evaluated.",
+                    measuredMetrics = new List<string>(metrics.Metrics.Keys),
+                };
+            }
+
+            var actual = Convert.ToInt64(metrics.Metrics[metric], CultureInfo.InvariantCulture);
             return new
             {
                 status = "ok",
-                passed = actual <= max,
                 metric,
-                actual,
                 max,
+                evaluated = true,
+                passed = actual <= max,
+                actual = (object)actual,
+                measuredMetrics = new List<string>(metrics.Metrics.Keys),
             };
         }
 

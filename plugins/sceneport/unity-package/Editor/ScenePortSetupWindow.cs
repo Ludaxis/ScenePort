@@ -25,6 +25,10 @@ namespace ScenePort.McpBridge.Editor
 
         private Vector2 scroll;
         private Vector2 doctorScroll;
+
+        // Collapsed by default: the raw config blocks and npx variants live behind this
+        // foldout so the primary "Connect …" buttons are the first thing users see.
+        private bool showAdvancedConnect;
         private ScenePortSetup.StatusModel status;
         private string statusMessage = string.Empty;
         private MessageType statusMessageType = MessageType.Info;
@@ -159,8 +163,6 @@ namespace ScenePort.McpBridge.Editor
                 EditorGUILayout.Space();
                 DrawConnectSection();
                 EditorGUILayout.Space();
-                DrawOneClickSection();
-                EditorGUILayout.Space();
                 DrawDiagnosticsSection();
                 EditorGUILayout.Space();
                 DrawLinksSection();
@@ -193,8 +195,8 @@ namespace ScenePort.McpBridge.Editor
 
                 if (!environmentResolved)
                 {
-                    EditorGUILayout.LabelField("Node detected", "checking…");
-                    EditorGUILayout.LabelField("Bundled server", "checking…");
+                    EditorGUILayout.LabelField("Node detected", "Resolving local tools…");
+                    EditorGUILayout.LabelField("Bundled server", "Resolving local tools…");
                 }
                 else
                 {
@@ -232,102 +234,20 @@ namespace ScenePort.McpBridge.Editor
             // Read cached value only; before resolution finishes treat as "no bundled server"
             // so the npx-based instructions are shown as a safe default.
             var serverPath = environmentResolved ? cachedServerPath : null;
+            var hasBundled = !string.IsNullOrEmpty(serverPath);
 
             EditorGUILayout.LabelField("Connect your AI tool", EditorStyles.boldLabel);
 
-            if (!string.IsNullOrEmpty(serverPath))
-            {
-                EditorGUILayout.LabelField(
-                    "Recommended: the MCP server is bundled with this package. " +
-                    "These configs run it directly with Node — no npm install, clone, or publish.",
-                    EditorStyles.miniLabel);
-                EditorGUILayout.Space();
-
-                EditorGUILayout.LabelField("Claude Code (one-liner, local)", EditorStyles.miniBoldLabel);
-                var claudeLocalCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath);
-                SelectableTextArea(claudeLocalCommand, 3);
-                if (GUILayout.Button("Copy Claude command (local)"))
-                {
-                    CopyToClipboard(claudeLocalCommand, "Claude command");
-                }
-                EditorGUILayout.Space();
-
-                EditorGUILayout.LabelField("Claude Code (.mcp.json, local)", EditorStyles.miniBoldLabel);
-                var claudeLocalJson = ScenePortSetup.ClaudeLocalConfigJson(serverPath, projectPath);
-                SelectableTextArea(claudeLocalJson, 7);
-                if (GUILayout.Button("Copy Claude config (local)"))
-                {
-                    CopyToClipboard(claudeLocalJson, "Claude config");
-                }
-                EditorGUILayout.Space();
-
-                EditorGUILayout.LabelField("Codex (config.toml, local)", EditorStyles.miniBoldLabel);
-                var codexLocalToml = ScenePortSetup.CodexLocalConfigToml(serverPath, projectPath);
-                SelectableTextArea(codexLocalToml, 6);
-                if (GUILayout.Button("Copy Codex config (local)"))
-                {
-                    CopyToClipboard(codexLocalToml, "Codex config");
-                }
-                EditorGUILayout.Space();
-
-                EditorGUILayout.LabelField(
-                    "Alternative (after 'npm publish'): the npx-based configs below fetch " +
-                    "the published " + ScenePortSetup.NpmPackage + " package.",
-                    EditorStyles.miniLabel);
-            }
-            else
-            {
-                EditorGUILayout.HelpBox(
-                    "Bundled server not found. Using the npx configs below, which require the " +
-                    ScenePortSetup.NpmPackage + " package to be published to npm.",
-                    MessageType.Warning);
-            }
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Claude Code (one-liner, npx)", EditorStyles.miniBoldLabel);
-            var claudeCommand = ScenePortSetup.ClaudeAddCommand(projectPath);
-            SelectableTextArea(claudeCommand, 2);
-            if (GUILayout.Button("Copy Claude command (npx)"))
-            {
-                CopyToClipboard(claudeCommand, "Claude command");
-            }
-            EditorGUILayout.Space();
-
-            EditorGUILayout.LabelField("Claude Code (.mcp.json, npx)", EditorStyles.miniBoldLabel);
-            var claudeJson = ScenePortSetup.ClaudeConfigJson(projectPath);
-            SelectableTextArea(claudeJson, 7);
-            if (GUILayout.Button("Copy Claude config (npx)"))
-            {
-                CopyToClipboard(claudeJson, "Claude config");
-            }
-            EditorGUILayout.Space();
-
-            EditorGUILayout.LabelField("Codex (config.toml, npx)", EditorStyles.miniBoldLabel);
-            var codexToml = ScenePortSetup.CodexConfigToml(projectPath);
-            SelectableTextArea(codexToml, 6);
-            if (GUILayout.Button("Copy Codex config (npx)"))
-            {
-                CopyToClipboard(codexToml, "Codex config");
-            }
-        }
-
-        private void DrawOneClickSection()
-        {
-            // Read cached value only; treat unresolved as "no bundled server".
-            var serverPath = environmentResolved ? cachedServerPath : null;
-            var hasBundled = !string.IsNullOrEmpty(serverPath);
-
-            EditorGUILayout.LabelField("One-click setup", EditorStyles.boldLabel);
-
+            // ---- Primary action: bundled-local connect (zero-dependency path) ----
             if (!environmentResolved)
             {
-                EditorGUILayout.HelpBox("Resolving local tools (node/claude/bundled server)…", MessageType.Info);
+                EditorGUILayout.HelpBox("Resolving local tools (node / claude / bundled server)…", MessageType.Info);
             }
-
-            if (hasBundled)
+            else if (hasBundled)
             {
                 EditorGUILayout.LabelField(
-                    "Registers the bundled server with your AI tool (resolves 'claude'/'node' for you).",
+                    "Recommended: the MCP server is bundled with this package. One click registers " +
+                    "it with your AI tool — no npm install, clone, or publish.",
                     EditorStyles.miniLabel);
 
                 using (new EditorGUILayout.HorizontalScope())
@@ -344,23 +264,96 @@ namespace ScenePort.McpBridge.Editor
                         pendingAction = () => ConnectCodexLocal();
                     }
                 }
-
-                EditorGUILayout.Space();
-                EditorGUILayout.LabelField("Needs npm publish:", EditorStyles.miniLabel);
-                if (GUILayout.Button("Write Claude config (npx — requires npm publish)"))
-                {
-                    // Defer: runs claude CLI + dialog; must run outside OnGUI.
-                    pendingAction = () => WriteClaudeConfig();
-                }
             }
             else
             {
-                EditorGUILayout.LabelField(
-                    "Runs the Claude CLI to register ScenePort for you (requires 'claude' on PATH " +
-                    "and the published " + ScenePortSetup.NpmPackage + " package).",
-                    EditorStyles.miniLabel);
+                EditorGUILayout.HelpBox(
+                    "Bundled server not found. Use the npx configs under \"Advanced / other clients\" " +
+                    "below, which require the " + ScenePortSetup.NpmPackage + " package to be published to npm.",
+                    MessageType.Warning);
+            }
 
-                if (GUILayout.Button("Write Claude config (run claude mcp add-json)"))
+            EditorGUILayout.Space();
+
+            // ---- Advanced: raw config blocks + npx variants (collapsed by default) ----
+            showAdvancedConnect = EditorGUILayout.Foldout(showAdvancedConnect, "Advanced / other clients", true);
+            if (!showAdvancedConnect)
+            {
+                return;
+            }
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                if (hasBundled)
+                {
+                    EditorGUILayout.LabelField(
+                        "Bundled-local configs (run the bundled server directly with Node).",
+                        EditorStyles.miniLabel);
+                    EditorGUILayout.Space();
+
+                    EditorGUILayout.LabelField("Claude Code (one-liner, local)", EditorStyles.miniBoldLabel);
+                    var claudeLocalCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath);
+                    SelectableTextArea(claudeLocalCommand, 3);
+                    if (GUILayout.Button("Copy Claude command (local)"))
+                    {
+                        CopyToClipboard(claudeLocalCommand, "Claude command");
+                    }
+                    EditorGUILayout.Space();
+
+                    EditorGUILayout.LabelField("Claude Code (.mcp.json, local)", EditorStyles.miniBoldLabel);
+                    var claudeLocalJson = ScenePortSetup.ClaudeLocalConfigJson(serverPath, projectPath);
+                    SelectableTextArea(claudeLocalJson, 7);
+                    if (GUILayout.Button("Copy Claude config (local)"))
+                    {
+                        CopyToClipboard(claudeLocalJson, "Claude config");
+                    }
+                    EditorGUILayout.Space();
+
+                    EditorGUILayout.LabelField("Codex (config.toml, local)", EditorStyles.miniBoldLabel);
+                    var codexLocalToml = ScenePortSetup.CodexLocalConfigToml(serverPath, projectPath);
+                    SelectableTextArea(codexLocalToml, 6);
+                    if (GUILayout.Button("Copy Codex config (local)"))
+                    {
+                        CopyToClipboard(codexLocalToml, "Codex config");
+                    }
+                    EditorGUILayout.Space();
+                }
+
+                EditorGUILayout.LabelField(
+                    "npx variants (fetch the published " + ScenePortSetup.NpmPackage +
+                    " package — available after it is published to npm).",
+                    EditorStyles.miniLabel);
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField("Claude Code (one-liner, npx)", EditorStyles.miniBoldLabel);
+                var claudeCommand = ScenePortSetup.ClaudeAddCommand(projectPath);
+                SelectableTextArea(claudeCommand, 2);
+                if (GUILayout.Button("Copy Claude command (npx)"))
+                {
+                    CopyToClipboard(claudeCommand, "Claude command");
+                }
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField("Claude Code (.mcp.json, npx)", EditorStyles.miniBoldLabel);
+                var claudeJson = ScenePortSetup.ClaudeConfigJson(projectPath);
+                SelectableTextArea(claudeJson, 7);
+                if (GUILayout.Button("Copy Claude config (npx)"))
+                {
+                    CopyToClipboard(claudeJson, "Claude config");
+                }
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField("Codex (config.toml, npx)", EditorStyles.miniBoldLabel);
+                var codexToml = ScenePortSetup.CodexConfigToml(projectPath);
+                SelectableTextArea(codexToml, 6);
+                if (GUILayout.Button("Copy Codex config (npx)"))
+                {
+                    CopyToClipboard(codexToml, "Codex config");
+                }
+                EditorGUILayout.Space();
+
+                EditorGUILayout.LabelField("Register via Claude CLI (npx — requires npm publish):", EditorStyles.miniLabel);
+                if (GUILayout.Button("Write Claude config (run claude mcp add-json, npx)"))
                 {
                     // Defer: runs claude CLI + dialog; must run outside OnGUI.
                     pendingAction = () => WriteClaudeConfig();

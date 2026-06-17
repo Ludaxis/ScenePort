@@ -31,6 +31,18 @@ export class FakeBridge {
     this._port = (this.server.address() as AddressInfo).port;
   }
 
+  /** Bind to a specific port so a stopped bridge can be brought back on the same URL. */
+  async startOnPort(port: number): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      this.server.once("error", reject);
+      this.server.listen(port, "127.0.0.1", () => {
+        this.server.removeListener("error", reject);
+        resolve();
+      });
+    });
+    this._port = (this.server.address() as AddressInfo).port;
+  }
+
   async stop(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       this.server.close((err: NodeJS.ErrnoException | undefined) => {

@@ -4,6 +4,14 @@ A closed-loop recipe: the agent reads the Unity console, forms a hypothesis, app
 small reversible change, recompiles, and re-checks — repeating until the console is clean or
 it runs out of safe options.
 
+## Copy-paste prompt
+
+```text
+> Use the sceneport:self-heal prompt. My Unity console has errors after my last change —
+> read the console, fix them with the smallest reversible edit, recompile, and re-check
+> until the console is clean. Show me each change before applying it.
+```
+
 ## When to use it
 
 - A scene or script throws compile or runtime errors and you want the agent to fix them

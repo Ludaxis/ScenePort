@@ -9,7 +9,9 @@
   parameters.
 - `unity_compare_golden_frame` now returns a per-pixel diff image plus `pixelDiffPercent` for
   visual-regression checks.
-- Published the MCP server to npm so `npx -y sceneport-mcp` works without a clone or build.
+- Prepared the MCP server for npm publishing as `sceneport-mcp` so that `npx -y sceneport-mcp`
+  will work without a clone or build once the package is published. Until then, use the
+  bundled-local path via `Tools > ScenePort > Setup`.
 - Added a `sceneport init` / `config <client> --write` setup flow that auto-writes host MCP
   config for Claude Code and Codex.
 - Added a Unity Editor window at `Tools > ScenePort > Setup` for one-click bridge connection

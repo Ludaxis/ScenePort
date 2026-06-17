@@ -214,10 +214,7 @@ describe("UnityBridgeClient identity guard", () => {
     await new Promise<void>((resolve) => hung.listen(0, "127.0.0.1", resolve));
     const port = (hung.address() as AddressInfo).port;
     try {
-      const c = new UnityBridgeClient(
-        { baseUrl: `http://127.0.0.1:${port}`, source: "env-url" },
-        { SCENEPORT_HTTP_TIMEOUT_MS: "150" },
-      );
+      const c = new UnityBridgeClient({ baseUrl: `http://127.0.0.1:${port}`, source: "env-url" }, { SCENEPORT_HTTP_TIMEOUT_MS: "150" });
       await expect(c.get("/health")).rejects.toMatchObject({ code: "bridge.timeout" });
     } finally {
       hung.closeAllConnections?.();

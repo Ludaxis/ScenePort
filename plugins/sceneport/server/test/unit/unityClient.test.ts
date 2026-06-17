@@ -1,4 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -202,5 +204,24 @@ describe("UnityBridgeClient identity guard", () => {
     const report = await c.statusReport();
     expect(report.warning).toContain("outdated");
     expect(report.tokenConfigured).toBe(false);
+  });
+
+  it("times out instead of hanging when the bridge accepts but never responds", async () => {
+    // Server that accepts the connection but never writes a response (e.g. Unity mid-recompile).
+    const hung = createServer(() => {
+      /* intentionally never responds */
+    });
+    await new Promise<void>((resolve) => hung.listen(0, "127.0.0.1", resolve));
+    const port = (hung.address() as AddressInfo).port;
+    try {
+      const c = new UnityBridgeClient(
+        { baseUrl: `http://127.0.0.1:${port}`, source: "env-url" },
+        { SCENEPORT_HTTP_TIMEOUT_MS: "150" },
+      );
+      await expect(c.get("/health")).rejects.toMatchObject({ code: "bridge.timeout" });
+    } finally {
+      hung.closeAllConnections?.();
+      await new Promise<void>((resolve) => hung.close(() => resolve()));
+    }
   });
 });

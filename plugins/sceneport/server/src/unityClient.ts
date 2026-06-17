@@ -155,6 +155,12 @@ export class UnityBridgeClient {
     }
   }
 
+  private requestTimeoutMs(): number {
+    const raw = this.env.SCENEPORT_HTTP_TIMEOUT_MS;
+    const parsed = raw === undefined ? Number.NaN : Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 15000;
+  }
+
   private async request(
     method: "GET" | "POST",
     path: string,
@@ -169,17 +175,34 @@ export class UnityBridgeClient {
       headers[TOKEN_HEADER] = this.target.token;
     }
 
+    const timeoutMs = this.requestTimeoutMs();
     let response: Response;
     try {
+      const signal = AbortSignal.timeout(timeoutMs);
       response =
         method === "GET"
-          ? await fetch(url, { method, headers })
+          ? await fetch(url, { method, headers, signal })
           : await fetch(url, {
               method,
               headers: { ...headers, "Content-Type": "application/json" },
               body: JSON.stringify(body),
+              signal,
             });
     } catch (error) {
+      // A timeout means the bridge accepted the connection but did not respond
+      // (Unity compiling, paused, or wedged). Rediscovery cannot fix that, so fail fast.
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+      if (timedOut) {
+        throw bridgeError({
+          code: "bridge.timeout",
+          category: "network",
+          retryable: true,
+          message: `Unity bridge did not respond within ${timeoutMs}ms.`,
+          remediation:
+            "Unity may be compiling, paused, or busy. Wait for it to finish, or restart the bridge from Tools > ScenePort. Set SCENEPORT_HTTP_TIMEOUT_MS to change the limit.",
+          details: { baseUrl: this.target.baseUrl, source: this.target.source, timeoutMs },
+        });
+      }
       // Bridge unreachable (e.g. Unity restarted on a new port). Rediscover once and retry.
       if (!isRetry && this.target.source !== "env-url" && this.rediscover()) {
         return this.request(method, path, params, body, true, options);

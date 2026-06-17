@@ -13390,20 +13390,39 @@ var UnityBridgeClient = class {
       });
     }
   }
+  requestTimeoutMs() {
+    const raw = this.env.SCENEPORT_HTTP_TIMEOUT_MS;
+    const parsed = raw === void 0 ? Number.NaN : Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 15e3;
+  }
   async request(method, path, params = {}, body, isRetry = false, options = {}) {
     const url = this.url(path, params);
     const headers = { Accept: "application/json" };
     if (this.target.token) {
       headers[TOKEN_HEADER] = this.target.token;
     }
+    const timeoutMs = this.requestTimeoutMs();
     let response;
     try {
-      response = method === "GET" ? await fetch(url, { method, headers }) : await fetch(url, {
+      const signal = AbortSignal.timeout(timeoutMs);
+      response = method === "GET" ? await fetch(url, { method, headers, signal }) : await fetch(url, {
         method,
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal
       });
     } catch (error2) {
+      const timedOut = error2 instanceof Error && (error2.name === "TimeoutError" || error2.name === "AbortError");
+      if (timedOut) {
+        throw bridgeError({
+          code: "bridge.timeout",
+          category: "network",
+          retryable: true,
+          message: `Unity bridge did not respond within ${timeoutMs}ms.`,
+          remediation: "Unity may be compiling, paused, or busy. Wait for it to finish, or restart the bridge from Tools > ScenePort. Set SCENEPORT_HTTP_TIMEOUT_MS to change the limit.",
+          details: { baseUrl: this.target.baseUrl, source: this.target.source, timeoutMs }
+        });
+      }
       if (!isRetry && this.target.source !== "env-url" && this.rediscover()) {
         return this.request(method, path, params, body, true, options);
       }

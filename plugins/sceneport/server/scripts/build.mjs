@@ -1,4 +1,4 @@
-import { copyFile, mkdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -25,3 +25,6 @@ await build({
 const unityServerDir = resolve(serverDir, "../unity-package/Server~");
 await mkdir(unityServerDir, { recursive: true });
 await copyFile(bundlePath, resolve(unityServerDir, "index.js"));
+// Mark the bundle as ESM so `node index.js` does not warn/reparse
+// (MODULE_TYPELESS_PACKAGE_JSON) when the nearest package.json is the UPM manifest.
+await writeFile(resolve(unityServerDir, "package.json"), `${JSON.stringify({ type: "module" }, null, 2)}\n`);

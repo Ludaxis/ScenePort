@@ -119,13 +119,23 @@ transactional batch rollback, audit log, capability-group policy).
   (new `mesh` capability group)
 - Allowlisted project/quality/time/physics settings read and write (new `settings` capability group)
 
-## v1.2: Animation Systems (planned)
+## Phase 2: Scene Graph and Prefab Completeness (in this release)
+
+Round out scene-graph editing and prefab-instance management on the existing `safe-write` and
+`authoring` spines, all dry-run-first and Undo-backed.
+
+- Reparent (world-position preserving by default), rename, and reorder siblings (`safe-write`)
+- Duplicate and destructive delete of GameObjects (`safe-write`, Undo-backed)
+- Prefab instantiation into the active scene and apply/revert of instance overrides (`authoring`)
+- Scene-affecting ops are batch-composable via `unity_authoring_batch` with transactional rollback
+
+## v1.2: Animation Systems (in this release)
 
 - AnimationClip authoring from keyframe curves
 - AnimatorController creation, parameters, states, and transitions (state-machine graphs)
 - Undo-backed Animator assignment (new `animation` capability group)
 
-## v1.3: Shader Graph Node Authoring (preview, planned)
+## v1.3: Shader Graph Node Authoring (preview, in this release)
 
 - Programmatic `.shadergraph` node/slot authoring via the referenceable-JSON format
 - Version-pinned and capability-gated (`shadergraph-preview`, off by default)

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Scene Graph, Prefabs, and Animation
+
+New authoring tools, all routed through the existing safety spine (dry-run, Undo/revert,
+transactional batch rollback, audit log, capability-group policy):
+
+- **Scene graph editing** (`safe-write` capability group): `unity_reparent_game_object`
+  (keeps world position by default), `unity_rename_game_object`, `unity_reorder_sibling`,
+  `unity_duplicate_game_object`, and `unity_delete_game_object` (destructive, Undo-backed).
+- **Prefab instances** (`authoring` capability group): `unity_instantiate_prefab`,
+  `unity_apply_prefab_overrides`, and `unity_revert_prefab_overrides`.
+- **Animation** (new `animation` capability group, denied by team-safe/playtest/read-only):
+  `unity_create_animation_clip` (bakes float curves from keyframes), `unity_create_animator_controller`
+  (typed parameters), `unity_add_animator_state`, `unity_add_animator_transition`, and
+  `unity_assign_animator` (Undo-backed scene assignment).
+- **ShaderGraph preview** (new `shadergraph-preview` capability group, off by default):
+  `unity_sg_create_graph` writes a `.shadergraph` asset (verbatim JSON or a minimal Unlit
+  template) with round-trip validation and rollback on import failure.
+- The new scene/prefab/animation ops are composable inside `unity_authoring_batch` with
+  transactional rollback.
+- Docs: new recipes (edit hierarchy and prefabs; author animation) and tool reference updates.
+
 ## v1.1.0
 
 ### Verified Authoring — Geometry, Shaders, Folders, Settings

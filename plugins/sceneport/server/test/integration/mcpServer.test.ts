@@ -71,9 +71,23 @@ const TOOL_NAMES = [
   "unity_create_folder",
   "unity_create_text_asset",
   "unity_create_shader",
+  "unity_sg_create_graph",
   "unity_create_primitive_mesh",
   "unity_create_procedural_mesh",
   "unity_assign_mesh",
+  "unity_create_animation_clip",
+  "unity_create_animator_controller",
+  "unity_add_animator_state",
+  "unity_add_animator_transition",
+  "unity_assign_animator",
+  "unity_reparent_game_object",
+  "unity_rename_game_object",
+  "unity_delete_game_object",
+  "unity_duplicate_game_object",
+  "unity_reorder_sibling",
+  "unity_instantiate_prefab",
+  "unity_apply_prefab_overrides",
+  "unity_revert_prefab_overrides",
   "unity_get_settings",
   "unity_set_setting",
   "unity_menu_item_allowlist",
@@ -135,9 +149,23 @@ describe("MCP server tool surface", () => {
       "/create-folder": (r) => ({ body: { status: "ok", body: r.body } }),
       "/create-text-asset": (r) => ({ body: { status: "ok", body: r.body } }),
       "/create-shader": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/shadergraph/create": (r) => ({ body: { status: "ok", body: r.body } }),
       "/mesh/create-primitive": (r) => ({ body: { status: "ok", body: r.body } }),
       "/mesh/create-procedural": (r) => ({ body: { status: "ok", body: r.body } }),
       "/mesh/assign": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/animation/create-clip": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/animation/create-controller": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/animation/add-state": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/animation/add-transition": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/animation/assign-animator": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/reparent": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/rename": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/delete-game-object": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/duplicate-game-object": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/reorder-sibling": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/instantiate-prefab": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/prefab-apply": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/prefab-revert": (r) => ({ body: { status: "ok", body: r.body } }),
       "/settings/get": () => ({ body: { status: "ok", settings: [{ key: "quality.level", type: "int", value: 2 }] } }),
       "/settings/set": (r) => ({ body: { status: "ok", body: r.body } }),
       "/capture-game-view": (r) => ({
@@ -296,6 +324,128 @@ describe("MCP server tool surface", () => {
       true,
     );
     expect(bridge!.requests.some((r) => r.url === "/settings/get")).toBe(true);
+  });
+
+  it("plumbs Phase 3 animation tools to their endpoints", async () => {
+    await client!.callTool({
+      name: "unity_create_animation_clip",
+      arguments: {
+        path: "Assets/Bob.anim",
+        curves: [
+          {
+            path: "",
+            type: "UnityEngine.Transform",
+            property: "m_LocalPosition.y",
+            keys: [
+              { time: 0, value: 0 },
+              { time: 1, value: 2 },
+            ],
+          },
+        ],
+        dryRun: true,
+      },
+    });
+    await client!.callTool({
+      name: "unity_create_animator_controller",
+      arguments: { path: "Assets/Hero.controller", parameters: [{ name: "Speed", type: "float" }], dryRun: true },
+    });
+    await client!.callTool({
+      name: "unity_add_animator_state",
+      arguments: {
+        controllerPath: "Assets/Hero.controller",
+        stateName: "Run",
+        motionPath: "Assets/Bob.anim",
+        isDefault: true,
+        dryRun: true,
+      },
+    });
+    await client!.callTool({
+      name: "unity_add_animator_transition",
+      arguments: {
+        controllerPath: "Assets/Hero.controller",
+        fromState: "Idle",
+        toState: "Run",
+        conditions: [{ parameter: "Speed", mode: "greater", threshold: 0.1 }],
+        dryRun: true,
+      },
+    });
+    await client!.callTool({
+      name: "unity_assign_animator",
+      arguments: { instanceId: 9, controllerPath: "Assets/Hero.controller", dryRun: true },
+    });
+
+    expect(
+      bridge!.requests.some((r) => r.url === "/animation/create-clip" && (r.body as Record<string, unknown>).path === "Assets/Bob.anim"),
+    ).toBe(true);
+    expect(
+      bridge!.requests.some(
+        (r) => r.url === "/animation/create-controller" && (r.body as Record<string, unknown>).path === "Assets/Hero.controller",
+      ),
+    ).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/animation/add-state" && (r.body as Record<string, unknown>).stateName === "Run")).toBe(
+      true,
+    );
+    expect(
+      bridge!.requests.some((r) => r.url === "/animation/add-transition" && (r.body as Record<string, unknown>).fromState === "Idle"),
+    ).toBe(true);
+    expect(
+      bridge!.requests.some(
+        (r) => r.url === "/animation/assign-animator" && (r.body as Record<string, unknown>).controllerPath === "Assets/Hero.controller",
+      ),
+    ).toBe(true);
+  });
+
+  it("plumbs the Phase 4 shadergraph preview tool to its endpoint", async () => {
+    await client!.callTool({ name: "unity_sg_create_graph", arguments: { path: "Assets/Gen.shadergraph", dryRun: true } });
+
+    expect(
+      bridge!.requests.some(
+        (r) => r.url === "/shadergraph/create" && (r.body as Record<string, unknown>).path === "Assets/Gen.shadergraph",
+      ),
+    ).toBe(true);
+  });
+
+  it("plumbs Phase 2 scene-graph and prefab tools to their endpoints", async () => {
+    await client!.callTool({ name: "unity_reparent_game_object", arguments: { instanceId: 11, parentInstanceId: 22, dryRun: true } });
+    await client!.callTool({ name: "unity_rename_game_object", arguments: { instanceId: 11, newName: "Renamed", dryRun: true } });
+    await client!.callTool({ name: "unity_delete_game_object", arguments: { instanceId: 11, dryRun: true } });
+    await client!.callTool({ name: "unity_duplicate_game_object", arguments: { instanceId: 11, dryRun: true } });
+    await client!.callTool({ name: "unity_reorder_sibling", arguments: { instanceId: 11, siblingIndex: 3, dryRun: true } });
+    await client!.callTool({ name: "unity_instantiate_prefab", arguments: { prefabPath: "Assets/Enemy.prefab", dryRun: true } });
+    await client!.callTool({ name: "unity_apply_prefab_overrides", arguments: { instanceId: 11, dryRun: true } });
+    await client!.callTool({ name: "unity_revert_prefab_overrides", arguments: { instanceId: 11, dryRun: true } });
+
+    expect(bridge!.requests.some((r) => r.url === "/reparent" && (r.body as Record<string, unknown>).parentInstanceId === 22)).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/rename" && (r.body as Record<string, unknown>).newName === "Renamed")).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/delete-game-object" && (r.body as Record<string, unknown>).instanceId === 11)).toBe(
+      true,
+    );
+    expect(bridge!.requests.some((r) => r.url === "/duplicate-game-object" && (r.body as Record<string, unknown>).instanceId === 11)).toBe(
+      true,
+    );
+    expect(bridge!.requests.some((r) => r.url === "/reorder-sibling" && (r.body as Record<string, unknown>).siblingIndex === 3)).toBe(true);
+    expect(
+      bridge!.requests.some(
+        (r) => r.url === "/instantiate-prefab" && (r.body as Record<string, unknown>).prefabPath === "Assets/Enemy.prefab",
+      ),
+    ).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/prefab-apply" && (r.body as Record<string, unknown>).instanceId === 11)).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/prefab-revert" && (r.body as Record<string, unknown>).instanceId === 11)).toBe(true);
+  });
+
+  it("marks unity_delete_game_object as destructive and wires an object reference by instance id", async () => {
+    const { tools } = await client!.listTools();
+    const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
+    expect(byName.unity_delete_game_object.annotations?.destructiveHint).toBe(true);
+
+    await client!.callTool({
+      name: "unity_set_serialized_property",
+      arguments: { instanceId: 1, propertyPath: "targetField", objectReferenceInstanceId: 99 },
+    });
+    const hit = bridge!.requests.find(
+      (r) => r.url === "/set-serialized-property" && (r.body as Record<string, unknown>).objectReferenceInstanceId === 99,
+    );
+    expect(hit).toBeDefined();
   });
 
   it("marks settings read as read-only and mesh creation as a mutation", async () => {

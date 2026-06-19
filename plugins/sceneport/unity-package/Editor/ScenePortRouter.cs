@@ -79,6 +79,14 @@ namespace ScenePort.McpBridge.Editor
                 ["/set-transform"] = Route(SceneEditHandlers.SetTransform, "safe-write", true),
                 ["/add-component"] = Route(SceneEditHandlers.AddComponent, "safe-write", true),
                 ["/set-serialized-property"] = Route(SceneEditHandlers.SetSerializedProperty, "safe-write", true),
+                ["/reparent"] = Route(SceneGraphHandlers.Reparent, "safe-write", true),
+                ["/rename"] = Route(SceneGraphHandlers.Rename, "safe-write", true),
+                ["/delete-game-object"] = Route(SceneGraphHandlers.Delete, "safe-write", true),
+                ["/duplicate-game-object"] = Route(SceneGraphHandlers.Duplicate, "safe-write", true),
+                ["/reorder-sibling"] = Route(SceneGraphHandlers.ReorderSibling, "safe-write", true),
+                ["/instantiate-prefab"] = Route(SceneGraphHandlers.InstantiatePrefab, "authoring", true),
+                ["/prefab-apply"] = Route(SceneGraphHandlers.ApplyPrefabOverrides, "authoring", true),
+                ["/prefab-revert"] = Route(SceneGraphHandlers.RevertPrefabOverrides, "authoring", true),
                 ["/authoring/validate"] = Route(AuthoringHandlers.Validate, "authoring", true),
                 ["/authoring/batch"] = Route(AuthoringHandlers.Batch, "authoring", true),
                 ["/create-script"] = Route(AuthoringHandlers.CreateScript, "authoring", true),
@@ -90,6 +98,12 @@ namespace ScenePort.McpBridge.Editor
                 ["/mesh/create-primitive"] = Route(MeshHandlers.CreatePrimitiveMesh, "mesh", true),
                 ["/mesh/create-procedural"] = Route(MeshHandlers.CreateProceduralMesh, "mesh", true),
                 ["/mesh/assign"] = Route(MeshHandlers.AssignMesh, "mesh", true),
+                ["/animation/create-clip"] = Route(AnimationHandlers.CreateAnimationClip, "animation", true),
+                ["/animation/create-controller"] = Route(AnimationHandlers.CreateAnimatorController, "animation", true),
+                ["/animation/add-state"] = Route(AnimationHandlers.AddAnimatorState, "animation", true),
+                ["/animation/add-transition"] = Route(AnimationHandlers.AddAnimatorTransition, "animation", true),
+                ["/animation/assign-animator"] = Route(AnimationHandlers.AssignAnimator, "animation", true),
+                ["/shadergraph/create"] = Route(ShaderGraphPreviewHandlers.CreateShaderGraph, "shadergraph-preview", true),
                 ["/settings/get"] = Route(SettingsHandlers.GetSettings, "settings", false),
                 ["/settings/set"] = Route(SettingsHandlers.SetSetting, "settings", true),
                 ["/menu-item-allowlist"] = Route(AuthoringHandlers.MenuItemAllowlist, "authoring", false),
@@ -384,6 +398,7 @@ namespace ScenePort.McpBridge.Editor
             "safe-write",
             "authoring",
             "mesh",
+            "animation",
             "settings",
             "shadergraph-preview",
             "audit",
@@ -413,12 +428,12 @@ namespace ScenePort.McpBridge.Editor
             if (profile == "team-safe")
             {
                 return group != "authoring" && group != "safe-write" && group != "play-mode" && group != "playtest"
-                    && group != "mesh" && group != "settings";
+                    && group != "mesh" && group != "animation" && group != "settings";
             }
 
             if (profile == "playtest")
             {
-                return group != "authoring" && group != "safe-write" && group != "mesh" && group != "settings";
+                return group != "authoring" && group != "safe-write" && group != "mesh" && group != "animation" && group != "settings";
             }
 
             return !mutating;
@@ -431,7 +446,7 @@ namespace ScenePort.McpBridge.Editor
             for (var i = 0; i < AllGroups.Length; i++)
             {
                 var group = AllGroups[i];
-                var mutating = group == "safe-write" || group == "authoring" || group == "play-mode" || group == "playtest" || group == "capture" || group == "tests" || group == "mesh" || group == "settings" || group == "shadergraph-preview";
+                var mutating = group == "safe-write" || group == "authoring" || group == "play-mode" || group == "playtest" || group == "capture" || group == "tests" || group == "mesh" || group == "animation" || group == "settings" || group == "shadergraph-preview";
                 if (Allows(profile, group, mutating))
                 {
                     allowed.Add(group);
@@ -471,6 +486,7 @@ namespace ScenePort.McpBridge.Editor
             "safe-write",
             "authoring",
             "mesh",
+            "animation",
             "settings",
             "shadergraph-preview",
             "assets",

@@ -252,7 +252,16 @@ namespace ScenePort.McpBridge.Editor
                     return true;
                 case SerializedPropertyType.ObjectReference:
                     var assetPath = req.ExtractString("objectReferenceAssetPath", req.ExtractString("stringValue", null));
-                    property.objectReferenceValue = string.IsNullOrEmpty(assetPath) ? null : AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+                    if (!string.IsNullOrEmpty(assetPath))
+                    {
+                        property.objectReferenceValue = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+                    }
+                    else
+                    {
+                        // Wire a live scene/component reference by instance id. Zero clears it.
+                        var refInstanceId = req.ExtractInt("objectReferenceInstanceId", 0);
+                        property.objectReferenceValue = refInstanceId == 0 ? null : EditorUtility.InstanceIDToObject(refInstanceId);
+                    }
                     return true;
                 case SerializedPropertyType.LayerMask:
                     property.intValue = Mathf.RoundToInt(req.ExtractFloat("numberValue", property.intValue));

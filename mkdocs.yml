@@ -54,6 +54,8 @@ nav:
           - Create prefab: recipes/create-prefab.md
           - Create a mesh: recipes/create-mesh.md
           - Author and verify a shader: recipes/author-and-verify-shader.md
+          - Edit hierarchy and prefabs: recipes/edit-hierarchy-and-prefabs.md
+          - Author animation: recipes/author-animation.md
       - Testing and playtest:
           - Visual regression: recipes/visual-regression.md
           - Write PlayMode test: recipes/write-playmode-test.md

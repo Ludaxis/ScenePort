@@ -59,6 +59,43 @@ land in v1.1.
 | `unity_create_procedural_mesh` | Create a Mesh `.asset` from explicit, range-validated vertices/triangles (+ optional normals/UVs). |
 | `unity_assign_mesh` | Assign a Mesh asset to a GameObject's MeshFilter (adds MeshFilter/MeshRenderer if missing), optional material. Undo-backed. |
 
+### ShaderGraph (preview) — author a `.shadergraph` asset (capability group `shadergraph-preview`)
+
+**Preview / scaffold.** Off by default; allowed **only** under the `full-safe-local` policy profile (every other profile, including `read-only`, `team-safe`, and `playtest`, denies it). ScenePort has no `com.unity.shadergraph` compile dependency — the asset is written as JSON text and round-trip validated after import. If Unity cannot load the asset back (package missing or content/version unsupported) the write is rolled back and a `capability.unsupported` error is returned. `dryRun` defaults to `true`.
+
+| Tool | What it does |
+| --- | --- |
+| `unity_sg_create_graph` | (preview) Create a `.shadergraph` asset under `Assets/` from verbatim JSON `content`, or from a minimal Unlit template when omitted. Round-trip validated; rolls back on import failure. |
+
+### Animation — clips, animator controllers, and assignment (capability group `animation`)
+
+Denied by the `team-safe`, `playtest`, and `read-only` profiles (mutating, like `mesh` and `authoring`). Asset creation is rollback-tracked; `unity_assign_animator` is Undo-backed and scene-mutating. All are dry-run aware (`dryRun` defaults to `true`).
+
+| Tool | What it does |
+| --- | --- |
+| `unity_create_animation_clip` | Create an AnimationClip `.asset`, optionally baking float curves from time/value keyframes (per child path + component type + property). |
+| `unity_create_animator_controller` | Create an AnimatorController `.asset`, optionally adding typed parameters (`float`/`int`/`bool`/`trigger`). |
+| `unity_add_animator_state` | Add a state to the controller's first layer, optionally assigning a motion clip and marking it the default state. |
+| `unity_add_animator_transition` | Add a transition between two named states on the first layer, with optional parameter conditions. |
+| `unity_assign_animator` | Assign a RuntimeAnimatorController to a scene GameObject's Animator (adds the Animator if missing). Undo-backed. |
+
+### Scene graph & prefabs — rearrange the hierarchy and work with prefabs
+
+Scene-graph reordering lives in the `safe-write` group; prefab instantiation and override apply/revert live in the `authoring` group. All are Undo-backed and dry-run aware (`dryRun` defaults to `true`).
+
+| Tool | What it does |
+| --- | --- |
+| `unity_reparent_game_object` | Move a GameObject under a new parent (or to the scene root when no parent is given); keeps world position by default. |
+| `unity_rename_game_object` | Rename a scene GameObject (idempotent). |
+| `unity_delete_game_object` | Destroy a scene GameObject and its children (destructive, Undo-backed). |
+| `unity_duplicate_game_object` | Clone a GameObject under the same parent, keeping the source name. |
+| `unity_reorder_sibling` | Set a GameObject's sibling index among its parent's children (idempotent). |
+| `unity_instantiate_prefab` | Instantiate a prefab asset into the active scene, optionally under a parent and at a local position. |
+| `unity_apply_prefab_overrides` | Apply a prefab instance's overrides back to the source prefab asset. |
+| `unity_revert_prefab_overrides` | Revert a prefab instance's overrides to the source prefab asset's values. |
+
+`unity_set_serialized_property` also accepts `objectReferenceInstanceId` to wire a live scene object/component into an ObjectReference field (a non-zero id sets it, `0` clears it) when no `objectReferenceAssetPath` is given.
+
 ### Settings — read/change allowlisted project settings (capability group `settings`)
 
 Denied by the `team-safe`, `playtest`, and `read-only` profiles. Writes are **allowlist-only**;

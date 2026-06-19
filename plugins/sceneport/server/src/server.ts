@@ -259,12 +259,21 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
         componentType: z.string().min(1).max(512).optional().describe("Optional component type when instanceId points at a GameObject."),
         componentIndex: z.number().int().min(0).optional().describe("Optional component index when instanceId points at a GameObject."),
         propertyPath: z.string().min(1).max(512).describe("SerializedProperty path such as m_Name or m_LocalPosition.x."),
-        value: serializedValueSchema.describe("String, number, boolean, vector, or color value to write."),
+        value: serializedValueSchema
+          .optional()
+          .describe(
+            "String, number, boolean, vector, or color value to write. Omit when wiring an ObjectReference by asset path or instance id.",
+          ),
         objectReferenceAssetPath: z.string().min(1).max(1024).optional().describe("Asset path for ObjectReference properties."),
+        objectReferenceInstanceId: z
+          .number()
+          .int()
+          .optional()
+          .describe("Instance ID of a live scene object/component to wire into an ObjectReference property when no asset path is given."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async ({ instanceId, componentType, componentIndex, propertyPath, value, objectReferenceAssetPath }) => {
+    async ({ instanceId, componentType, componentIndex, propertyPath, value, objectReferenceAssetPath, objectReferenceInstanceId }) => {
       try {
         return jsonResult(
           await client.post("/set-serialized-property", {
@@ -273,7 +282,8 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
             componentIndex,
             propertyPath,
             objectReferenceAssetPath,
-            ...encodeSerializedValue(value),
+            objectReferenceInstanceId,
+            ...(value === undefined ? {} : encodeSerializedValue(value)),
           }),
         );
       } catch (error) {
@@ -1259,6 +1269,23 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
   );
 
   server.registerTool(
+    "unity_sg_create_graph",
+    {
+      title: "Create Unity ShaderGraph (preview)",
+      description:
+        "PREVIEW (scaffold): create a .shadergraph asset under Assets/ from verbatim JSON `content`, or omit it to write a minimal Unlit template. The .shadergraph is authored as JSON text (no com.unity.shadergraph dependency) and round-trip validated after import; if it cannot be loaded back the write is rolled back and reported as an unsupported capability. Off by default except under the full-safe-local policy.",
+      inputSchema: {
+        path: z.string().min(1).max(1024).describe("ShaderGraph asset path under Assets/, must end with .shadergraph."),
+        content: z.string().max(1_000_000).optional().describe("Full .shadergraph JSON. If omitted, a minimal Unlit template is written."),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/shadergraph/create"),
+  );
+
+  server.registerTool(
     "unity_create_primitive_mesh",
     {
       title: "Create Unity Primitive Mesh",
@@ -1315,6 +1342,273 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     toolPost("/mesh/assign"),
+  );
+
+  server.registerTool(
+    "unity_create_animation_clip",
+    {
+      title: "Create Unity Animation Clip",
+      description:
+        "Create an AnimationClip .asset, optionally with float curves. Each curve targets a child path + component type + property and is built from time/value keyframes.",
+      inputSchema: {
+        path: z.string().min(1).max(1024).describe("Clip asset path under Assets/, must end with .anim."),
+        name: z.string().min(1).max(256).optional().describe("Clip name (defaults to the file name)."),
+        curves: z
+          .array(
+            z.object({
+              path: z
+                .string()
+                .max(512)
+                .default("")
+                .optional()
+                .describe("Relative GameObject path the curve animates (empty = the animated root)."),
+              type: z
+                .string()
+                .min(1)
+                .max(256)
+                .default("UnityEngine.Transform")
+                .optional()
+                .describe("Component type the property lives on, e.g. UnityEngine.Transform."),
+              property: z.string().min(1).max(256).describe('Animated property name, e.g. "m_LocalPosition.x".'),
+              keys: z
+                .array(z.object({ time: z.number(), value: z.number() }))
+                .min(1)
+                .max(4096)
+                .describe("Keyframes (time in seconds, float value)."),
+            }),
+          )
+          .max(256)
+          .optional()
+          .describe("Optional float curves to bake into the clip."),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/animation/create-clip"),
+  );
+
+  server.registerTool(
+    "unity_create_animator_controller",
+    {
+      title: "Create Unity Animator Controller",
+      description: "Create an AnimatorController .asset, optionally adding typed parameters (float/int/bool/trigger).",
+      inputSchema: {
+        path: z.string().min(1).max(1024).describe("Controller asset path under Assets/, must end with .controller."),
+        parameters: z
+          .array(
+            z.object({
+              name: z.string().min(1).max(256).describe("Parameter name."),
+              type: z.enum(["float", "int", "bool", "trigger"]).default("float").optional().describe("Parameter type."),
+            }),
+          )
+          .max(64)
+          .optional()
+          .describe("Optional animator parameters to add."),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/animation/create-controller"),
+  );
+
+  server.registerTool(
+    "unity_add_animator_state",
+    {
+      title: "Add Animator State",
+      description:
+        "Add a state to an animator controller's first layer, optionally assigning a motion clip and marking it the default state.",
+      inputSchema: {
+        controllerPath: z.string().min(1).max(1024).describe("Animator controller asset path under Assets/ ending with .controller."),
+        stateName: z.string().min(1).max(256).describe("Name of the state to add."),
+        motionPath: z.string().min(1).max(1024).optional().describe("Optional AnimationClip asset path under Assets/ ending with .anim."),
+        isDefault: z.boolean().default(false).optional().describe("Make this the state machine's default state."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/animation/add-state"),
+  );
+
+  server.registerTool(
+    "unity_add_animator_transition",
+    {
+      title: "Add Animator Transition",
+      description: "Add a transition between two named states on an animator controller's first layer, with optional parameter conditions.",
+      inputSchema: {
+        controllerPath: z.string().min(1).max(1024).describe("Animator controller asset path under Assets/ ending with .controller."),
+        fromState: z.string().min(1).max(256).describe("Source state name (must already exist)."),
+        toState: z.string().min(1).max(256).describe("Destination state name (must already exist)."),
+        conditions: z
+          .array(
+            z.object({
+              parameter: z.string().min(1).max(256).describe("Parameter the condition tests."),
+              mode: z
+                .enum(["if", "ifNot", "greater", "less", "equals", "notEqual"])
+                .default("greater")
+                .optional()
+                .describe("Condition comparison mode."),
+              threshold: z.number().default(0).optional().describe("Comparison threshold (ignored for if/ifNot)."),
+            }),
+          )
+          .max(32)
+          .optional()
+          .describe("Optional transition conditions."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/animation/add-transition"),
+  );
+
+  server.registerTool(
+    "unity_assign_animator",
+    {
+      title: "Assign Animator Controller To GameObject",
+      description:
+        "Assign a RuntimeAnimatorController asset to a scene GameObject's Animator (adding the Animator component if missing). Undo-wrapped.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Target GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Target GameObject hierarchy path (alternative to instanceId)."),
+        controllerPath: z.string().min(1).max(1024).describe("Animator controller asset path under Assets/ ending with .controller."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    toolPost("/animation/assign-animator"),
+  );
+
+  server.registerTool(
+    "unity_reparent_game_object",
+    {
+      title: "Reparent Unity GameObject",
+      description:
+        "Move a scene GameObject under a new parent (or to the scene root when no parent is given), preserving world position by default. Undo-wrapped.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Target GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Target GameObject hierarchy path (alternative to instanceId)."),
+        parentInstanceId: z
+          .number()
+          .int()
+          .optional()
+          .describe("New parent instance ID. Omit both parent fields to unparent to the scene root."),
+        parentPath: z.string().min(1).max(512).optional().describe("New parent hierarchy path (alternative to parentInstanceId)."),
+        worldPositionStays: z.boolean().default(true).optional().describe("Keep the GameObject's world transform when reparenting."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/reparent"),
+  );
+
+  server.registerTool(
+    "unity_rename_game_object",
+    {
+      title: "Rename Unity GameObject",
+      description: "Rename a scene GameObject. Undo-wrapped.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Target GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Target GameObject hierarchy path (alternative to instanceId)."),
+        newName: z.string().min(1).max(512).describe("New name for the GameObject."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    toolPost("/rename"),
+  );
+
+  server.registerTool(
+    "unity_delete_game_object",
+    {
+      title: "Delete Unity GameObject",
+      description: "Destroy a scene GameObject (and its children). Undo-wrapped, but destructive.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Target GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Target GameObject hierarchy path (alternative to instanceId)."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/delete-game-object"),
+  );
+
+  server.registerTool(
+    "unity_duplicate_game_object",
+    {
+      title: "Duplicate Unity GameObject",
+      description: "Clone a scene GameObject under the same parent, keeping the source name. Undo-wrapped.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Source GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Source GameObject hierarchy path (alternative to instanceId)."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/duplicate-game-object"),
+  );
+
+  server.registerTool(
+    "unity_reorder_sibling",
+    {
+      title: "Reorder Unity Sibling",
+      description: "Set a scene GameObject's sibling index among its parent's children. Undo-wrapped.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Target GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Target GameObject hierarchy path (alternative to instanceId)."),
+        siblingIndex: z.number().int().min(0).describe("New zero-based sibling index."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    toolPost("/reorder-sibling"),
+  );
+
+  server.registerTool(
+    "unity_instantiate_prefab",
+    {
+      title: "Instantiate Unity Prefab",
+      description: "Instantiate a prefab asset into the active scene, optionally under a parent and at a local position. Undo-wrapped.",
+      inputSchema: {
+        prefabPath: z.string().min(1).max(1024).describe("Prefab asset path under Assets/, must end with .prefab."),
+        parentInstanceId: z.number().int().optional().describe("Optional parent instance ID."),
+        parentPath: z.string().min(1).max(512).optional().describe("Optional parent hierarchy path (alternative to parentInstanceId)."),
+        position: vector3Schema.optional().describe("Optional local position for the new instance."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/instantiate-prefab"),
+  );
+
+  server.registerTool(
+    "unity_apply_prefab_overrides",
+    {
+      title: "Apply Unity Prefab Overrides",
+      description: "Apply a scene prefab instance's overrides back to the source prefab asset. Undo-wrapped.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Prefab instance GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Prefab instance hierarchy path (alternative to instanceId)."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/prefab-apply"),
+  );
+
+  server.registerTool(
+    "unity_revert_prefab_overrides",
+    {
+      title: "Revert Unity Prefab Overrides",
+      description: "Revert a scene prefab instance's overrides back to the source prefab asset's values. Undo-wrapped.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Prefab instance GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Prefab instance hierarchy path (alternative to instanceId)."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/prefab-revert"),
   );
 
   server.registerTool(

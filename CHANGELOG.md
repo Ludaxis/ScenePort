@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.1.0
+
+### Verified Authoring — Geometry, Shaders, Folders, Settings
+
+New authoring tools, all routed through the existing safety spine (dry-run, Undo/revert,
+transactional batch rollback, audit log, capability-group policy):
+
+- **Mesh** (new `mesh` capability group): `unity_create_primitive_mesh` (box/sphere/cylinder/
+  capsule/plane/quad, scalable), `unity_create_procedural_mesh` (explicit, range-validated
+  vertices/triangles + optional normals/UVs), and `unity_assign_mesh` (Undo-backed assignment
+  that adds MeshFilter/MeshRenderer as needed, optional material).
+- **Shaders**: `unity_create_shader` writes a `.shader` (ShaderLab) asset verbatim or from a
+  URP/Built-in template; pair with `unity_wait_for_idle` + `unity_get_compile_errors` to verify
+  it compiled.
+- **Folders & files**: `unity_create_folder` (recursive) and `unity_create_text_asset`
+  (extension-allowlisted inert text/source/config assets).
+- **Settings** (new `settings` capability group, denied by team-safe/playtest/read-only):
+  `unity_get_settings` and `unity_set_setting` over an allowlist of player/quality/time/physics
+  keys; unknown/destructive keys are rejected and the previous value is echoed for manual revert.
+- New mesh/asset ops are composable inside `unity_authoring_batch` with transactional rollback.
+- Docs: new recipes (create a mesh; author and verify a shader) and tool reference updates.
+
 ## v0.9.0
 
 ### Wow And Easy Setup

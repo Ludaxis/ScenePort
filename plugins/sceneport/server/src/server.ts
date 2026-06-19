@@ -1203,6 +1203,150 @@ export function createScenePortServer(client: UnityBridgeClient): McpServer {
   );
 
   server.registerTool(
+    "unity_create_folder",
+    {
+      title: "Create Unity Folder",
+      description: "Create a folder (recursively) under Assets/ with safe path validation.",
+      inputSchema: {
+        path: z.string().min(1).max(1024).describe("Folder path under Assets/, e.g. Assets/Art/Meshes."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    toolPost("/create-folder"),
+  );
+
+  server.registerTool(
+    "unity_create_text_asset",
+    {
+      title: "Create Unity Text Asset",
+      description:
+        "Create an inert text/config/source asset under Assets/ (extension-allowlisted: .txt/.json/.md/.cs/.shader/.hlsl/.asmdef/.uss/.uxml and similar).",
+      inputSchema: {
+        path: z.string().min(1).max(1024),
+        content: z.string().max(1_000_000).default("").optional(),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/create-text-asset"),
+  );
+
+  server.registerTool(
+    "unity_create_shader",
+    {
+      title: "Create Unity Shader",
+      description:
+        "Create a .shader (ShaderLab) asset under Assets/. Provide `content` verbatim, or omit it to scaffold from a `template` (urpUnlit|unlit). Verify it compiled with unity_wait_for_idle + unity_get_compile_errors.",
+      inputSchema: {
+        path: z.string().min(1).max(1024).describe("Shader path under Assets/, must end with .shader."),
+        content: z.string().max(1_000_000).optional().describe("Full ShaderLab source. If omitted, a template is generated."),
+        template: z.enum(["urpUnlit", "unlit"]).default("urpUnlit").optional(),
+        shaderName: z
+          .string()
+          .min(1)
+          .max(256)
+          .default("ScenePort/Generated")
+          .optional()
+          .describe('The Shader "..." name used by the template.'),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/create-shader"),
+  );
+
+  server.registerTool(
+    "unity_create_primitive_mesh",
+    {
+      title: "Create Unity Primitive Mesh",
+      description: "Create a Mesh .asset from a built-in primitive (box, sphere, cylinder, capsule, plane, quad), optionally scaled.",
+      inputSchema: {
+        path: z.string().min(1).max(1024).describe("Mesh asset path under Assets/, must end with .asset."),
+        shape: z.enum(["box", "sphere", "cylinder", "capsule", "plane", "quad"]).default("box").optional(),
+        size: vector3Schema.optional().describe("Per-axis scale applied to the primitive's vertices (default 1,1,1)."),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/mesh/create-primitive"),
+  );
+
+  server.registerTool(
+    "unity_create_procedural_mesh",
+    {
+      title: "Create Unity Procedural Mesh",
+      description:
+        "Create a Mesh .asset from explicit vertices and triangle indices, with optional normals and UVs. Indices are range-validated; normals are recalculated when omitted.",
+      inputSchema: {
+        path: z.string().min(1).max(1024).describe("Mesh asset path under Assets/, must end with .asset."),
+        vertices: z.array(vector3Schema).min(3).max(200_000).describe("Vertex positions."),
+        triangles: z.array(z.number().int().min(0)).min(3).max(600_000).describe("Triangle indices (length must be a multiple of 3)."),
+        normals: z.array(vector3Schema).max(200_000).optional().describe("Optional per-vertex normals; length must equal vertices."),
+        uv: z
+          .array(z.object({ x: z.number(), y: z.number() }))
+          .max(200_000)
+          .optional()
+          .describe("Optional per-vertex UVs; length must equal vertices."),
+        dryRun: z.boolean().default(true).optional(),
+        onConflict: z.enum(["error", "generateUniquePath"]).default("error").optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    toolPost("/mesh/create-procedural"),
+  );
+
+  server.registerTool(
+    "unity_assign_mesh",
+    {
+      title: "Assign Mesh To GameObject",
+      description:
+        "Assign a Mesh asset to a scene GameObject's MeshFilter (adding MeshFilter/MeshRenderer if missing), optionally with a material. Undo-wrapped.",
+      inputSchema: {
+        instanceId: z.number().int().optional().describe("Target GameObject instance ID."),
+        path: z.string().min(1).max(512).optional().describe("Target GameObject hierarchy path (alternative to instanceId)."),
+        meshPath: z.string().min(1).max(1024).describe("Mesh asset path under Assets/ ending with .asset."),
+        materialPath: z.string().min(1).max(1024).optional().describe("Optional material asset path under Assets/ ending with .mat."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    toolPost("/mesh/assign"),
+  );
+
+  server.registerTool(
+    "unity_get_settings",
+    {
+      title: "Read Unity Settings",
+      description: "Read the allowlisted project/player/quality/time/physics settings ScenePort can change, with their current values.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    toolGet("/settings/get"),
+  );
+
+  server.registerTool(
+    "unity_set_setting",
+    {
+      title: "Set Unity Setting",
+      description:
+        "Set one allowlisted setting by key (e.g. quality.level, time.fixedDeltaTime, player.productName, physics.gravity). Echoes the previous value for manual revert. Settings are not Unity-Undo reversible.",
+      inputSchema: {
+        key: z.string().min(1).max(128).describe("Allowlisted setting key from unity_get_settings."),
+        value: z
+          .union([z.string(), z.number(), z.boolean(), z.object({ x: z.number(), y: z.number(), z: z.number().optional() })])
+          .describe("New value; type must match the key (string/int/float/vector3)."),
+        dryRun: z.boolean().default(true).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    toolPost("/settings/set"),
+  );
+
+  server.registerTool(
     "unity_menu_item_allowlist",
     {
       title: "Unity Menu Item Allowlist",

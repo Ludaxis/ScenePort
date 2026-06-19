@@ -238,6 +238,139 @@ namespace ScenePort.McpBridge.Editor
             return response;
         }
 
+        // Generic text assets are restricted to inert, project-local source/config formats.
+        // Anything not on this list (binaries, executables, native libs) is rejected.
+        private static readonly string[] TextAssetExtensions =
+        {
+            ".txt", ".json", ".md", ".xml", ".csv", ".yaml", ".yml",
+            ".cs", ".shader", ".cginc", ".hlsl", ".compute", ".asmdef", ".asmref", ".uss", ".uxml",
+        };
+
+        internal static object CreateFolder(ScenePortRequest req, ScenePortContext ctx)
+        {
+            var path = NormalizeAssetPath(req.ExtractString("path", req.GetString("path", null)));
+            var dryRun = req.ExtractBool("dryRun", false);
+            var error = ValidateAssetPath(path, null);
+            if (error != null)
+            {
+                return error;
+            }
+            if (path == "Assets" || path.EndsWith("/", StringComparison.Ordinal))
+            {
+                return new ErrorResponse("request.invalid", "Folder path must be a new folder under Assets/.", "request", false);
+            }
+
+            var response = new AuthoringResponse { DryRun = dryRun, Operation = "createFolder" };
+            var exists = AssetDatabase.IsValidFolder(path);
+            response.Changes.Add(Change("folder", exists ? "noop" : "create", path, false, !exists));
+            if (exists)
+            {
+                response.Warnings.Add("Folder already exists: " + path);
+                response.Result = new { path, created = false };
+                return response;
+            }
+            if (dryRun)
+            {
+                response.Result = new { path, created = false };
+                return response;
+            }
+
+            EnsureAssetFolder(path);
+            response.Result = new { path, created = true };
+            return response;
+        }
+
+        internal static object CreateTextAsset(ScenePortRequest req, ScenePortContext ctx)
+        {
+            return WriteTextAsset(req, "createTextAsset", null, () => req.ExtractString("content", string.Empty));
+        }
+
+        internal static object CreateShader(ScenePortRequest req, ScenePortContext ctx)
+        {
+            // ShaderLab text is written verbatim; correctness is proven by the agent calling
+            // wait_for_idle + get_compile_errors after import (the verified-authoring loop).
+            return WriteTextAsset(req, "createShader", ".shader", () =>
+            {
+                var content = req.ExtractString("content", null);
+                if (!string.IsNullOrEmpty(content))
+                {
+                    return content;
+                }
+                var template = req.ExtractString("template", "urpUnlit");
+                var shaderName = req.ExtractString("shaderName", "ScenePort/Generated");
+                return ShaderTemplate(template, shaderName);
+            });
+        }
+
+        private static object WriteTextAsset(ScenePortRequest req, string operation, string requiredExtension, Func<string> contentFactory)
+        {
+            var path = NormalizeAssetPath(req.ExtractString("path", req.GetString("path", null)));
+            var dryRun = req.ExtractBool("dryRun", false);
+            var error = ValidateAssetPath(path, requiredExtension);
+            if (error != null)
+            {
+                return error;
+            }
+            if (!IsAllowedTextExtension(path))
+            {
+                return new ErrorResponse(
+                    "request.invalid",
+                    "Text asset extension is not allowed: " + Path.GetExtension(path),
+                    "request",
+                    false,
+                    null,
+                    "Allowed extensions: " + string.Join(", ", TextAssetExtensions));
+            }
+            path = ResolveConflict(path, req);
+            error = EnsureDoesNotExist(path);
+            if (error != null)
+            {
+                return error;
+            }
+
+            var response = new AuthoringResponse { DryRun = dryRun, Operation = operation };
+            response.Changes.Add(Change("asset", "create", path, false, true));
+            if (dryRun)
+            {
+                response.Result = new { path };
+                return response;
+            }
+
+            EnsureAssetFolder(Path.GetDirectoryName(path));
+            File.WriteAllText(Path.Combine(ScenePortPaths.ProjectPath(), path), contentFactory() ?? string.Empty);
+            AssetDatabase.ImportAsset(path);
+            response.Result = new { path };
+            return response;
+        }
+
+        private static bool IsAllowedTextExtension(string path)
+        {
+            var ext = Path.GetExtension(path);
+            if (string.IsNullOrEmpty(ext))
+            {
+                return false;
+            }
+            for (var i = 0; i < TextAssetExtensions.Length; i++)
+            {
+                if (string.Equals(ext, TextAssetExtensions[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static string ShaderTemplate(string template, string shaderName)
+        {
+            if (template == "unlit")
+            {
+                return "Shader \"" + shaderName + "\"\n{\n    Properties\n    {\n        _Color (\"Color\", Color) = (1,1,1,1)\n    }\n    SubShader\n    {\n        Tags { \"RenderType\"=\"Opaque\" }\n        Pass\n        {\n            CGPROGRAM\n            #pragma vertex vert\n            #pragma fragment frag\n            #include \"UnityCG.cginc\"\n            struct appdata { float4 vertex : POSITION; };\n            struct v2f { float4 pos : SV_POSITION; };\n            fixed4 _Color;\n            v2f vert (appdata v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }\n            fixed4 frag (v2f i) : SV_Target { return _Color; }\n            ENDCG\n        }\n    }\n}\n";
+            }
+
+            // Default: URP-compatible unlit shader.
+            return "Shader \"" + shaderName + "\"\n{\n    Properties\n    {\n        _BaseColor (\"Base Color\", Color) = (1,1,1,1)\n    }\n    SubShader\n    {\n        Tags { \"RenderType\"=\"Opaque\" \"RenderPipeline\"=\"UniversalPipeline\" }\n        Pass\n        {\n            HLSLPROGRAM\n            #pragma vertex vert\n            #pragma fragment frag\n            #include \"Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl\"\n            struct Attributes { float4 positionOS : POSITION; };\n            struct Varyings { float4 positionHCS : SV_POSITION; };\n            half4 _BaseColor;\n            Varyings vert (Attributes IN) { Varyings OUT; OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz); return OUT; }\n            half4 frag (Varyings IN) : SV_Target { return _BaseColor; }\n            ENDHLSL\n        }\n    }\n}\n";
+        }
+
         internal static object MenuItemAllowlist(ScenePortRequest req, ScenePortContext ctx)
         {
             return new MenuItemAllowlistResponse { Items = MenuAllowlist };
@@ -277,18 +410,24 @@ namespace ScenePort.McpBridge.Editor
                 case "createScript": return CreateScript(req, ctx);
                 case "createMaterial": return CreateMaterial(req, ctx);
                 case "createPrefab": return CreatePrefab(req, ctx);
+                case "createFolder": return CreateFolder(req, ctx);
+                case "createTextAsset": return CreateTextAsset(req, ctx);
+                case "createShader": return CreateShader(req, ctx);
+                case "createPrimitiveMesh": return MeshHandlers.CreatePrimitiveMesh(req, ctx);
+                case "createProceduralMesh": return MeshHandlers.CreateProceduralMesh(req, ctx);
                 case "executeMenuItem": return ExecuteMenuItem(req, ctx);
                 case "createGameObject": return WrapSceneMutation("createGameObject", SceneEditHandlers.CreateGameObject(req, ctx));
                 case "setTransform": return WrapSceneMutation("setTransform", SceneEditHandlers.SetTransform(req, ctx));
                 case "addComponent": return WrapSceneMutation("addComponent", SceneEditHandlers.AddComponent(req, ctx));
                 case "setSerializedProperty": return WrapSceneMutation("setSerializedProperty", SceneEditHandlers.SetSerializedProperty(req, ctx));
+                case "assignMesh": return WrapSceneMutation("assignMesh", MeshHandlers.AssignMesh(req, ctx));
                 default: return new ErrorResponse("request.invalid", "Unknown batch operation: " + op, "request", false);
             }
         }
 
         private static bool IsSceneMutation(string op)
         {
-            return op == "createGameObject" || op == "setTransform" || op == "addComponent" || op == "setSerializedProperty";
+            return op == "createGameObject" || op == "setTransform" || op == "addComponent" || op == "setSerializedProperty" || op == "assignMesh";
         }
 
         private static object WrapSceneMutation(string operation, object result)
@@ -303,7 +442,7 @@ namespace ScenePort.McpBridge.Editor
             return response;
         }
 
-        private static ErrorResponse ValidateAssetPath(string path, string extension)
+        internal static ErrorResponse ValidateAssetPath(string path, string extension)
         {
             if (string.IsNullOrEmpty(path))
             {
@@ -328,30 +467,30 @@ namespace ScenePort.McpBridge.Editor
             return null;
         }
 
-        private static ErrorResponse EnsureDoesNotExist(string path)
+        internal static ErrorResponse EnsureDoesNotExist(string path)
         {
             return !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(path))
                 ? new ErrorResponse("request.invalid", "Asset already exists: " + path, "request", false, null, "Use onConflict: generateUniquePath to avoid overwriting.")
                 : null;
         }
 
-        private static string ResolveConflict(string path, ScenePortRequest req)
+        internal static string ResolveConflict(string path, ScenePortRequest req)
         {
             var onConflict = req.ExtractString("onConflict", "error");
             return onConflict == "generateUniquePath" ? AssetDatabase.GenerateUniqueAssetPath(path) : path;
         }
 
-        private static string NormalizeAssetPath(string path)
+        internal static string NormalizeAssetPath(string path)
         {
             return string.IsNullOrEmpty(path) ? path : path.Replace('\\', '/').Trim();
         }
 
-        private static AuthoringChangeDto Change(string kind, string action, string path, bool undo, bool rollback, string target = null)
+        internal static AuthoringChangeDto Change(string kind, string action, string path, bool undo, bool rollback, string target = null)
         {
             return new AuthoringChangeDto { Kind = kind, Action = action, Path = path, Target = target, UndoSupported = undo, RollbackSupported = rollback };
         }
 
-        private static void EnsureAssetFolder(string folder)
+        internal static void EnsureAssetFolder(string folder)
         {
             if (string.IsNullOrEmpty(folder) || folder == "Assets" || AssetDatabase.IsValidFolder(folder))
             {

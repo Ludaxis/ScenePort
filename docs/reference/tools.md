@@ -45,8 +45,30 @@ land in v1.1.
 | `unity_create_script` | Create a C# script under `Assets/`. |
 | `unity_create_material` | Create a material asset. |
 | `unity_create_prefab` | Create a prefab asset. |
+| `unity_create_folder` | Create a folder (recursively) under `Assets/`. |
+| `unity_create_text_asset` | Create an inert text/config/source asset (extension-allowlisted). |
+| `unity_create_shader` | Create a `.shader` (ShaderLab) asset, verbatim or from a template. |
 | `unity_menu_item_allowlist` | List menu items allowed for execution. |
 | `unity_execute_menu_item` | Execute an exact-match allowlisted menu item. |
+
+### Mesh — create geometry and assign it (capability group `mesh`)
+
+| Tool | What it does |
+| --- | --- |
+| `unity_create_primitive_mesh` | Create a Mesh `.asset` from a built-in primitive (box/sphere/cylinder/capsule/plane/quad), optionally scaled. |
+| `unity_create_procedural_mesh` | Create a Mesh `.asset` from explicit, range-validated vertices/triangles (+ optional normals/UVs). |
+| `unity_assign_mesh` | Assign a Mesh asset to a GameObject's MeshFilter (adds MeshFilter/MeshRenderer if missing), optional material. Undo-backed. |
+
+### Settings — read/change allowlisted project settings (capability group `settings`)
+
+Denied by the `team-safe`, `playtest`, and `read-only` profiles. Writes are **allowlist-only**;
+unknown keys (including destructive ones like bundle id / scripting backend) are rejected. Settings
+are **not** Unity-Undo reversible — `unity_set_setting` echoes the previous value for manual revert.
+
+| Tool | What it does |
+| --- | --- |
+| `unity_get_settings` | Read the allowlisted player/quality/time/physics settings and current values. |
+| `unity_set_setting` | Set one allowlisted setting by key (e.g. `quality.level`, `time.fixedDeltaTime`, `physics.gravity`). |
 
 ### Test — Unity Test Runner and assertions
 

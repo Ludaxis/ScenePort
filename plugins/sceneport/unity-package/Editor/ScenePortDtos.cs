@@ -546,6 +546,12 @@ namespace ScenePort.McpBridge.Editor
         [JsonProperty("items")] public string[] Items;
     }
 
+    internal sealed class SettingsSnapshotResponse
+    {
+        [JsonProperty("status")] public string Status = "ok";
+        [JsonProperty("settings")] public System.Collections.Generic.List<object> Settings = new System.Collections.Generic.List<object>();
+    }
+
     internal sealed class AuditLogEntryDto
     {
         [JsonProperty("utc")] public string Utc;

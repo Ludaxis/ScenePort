@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0
+
+- Added mesh authoring: `/mesh/create-primitive`, `/mesh/create-procedural` (range-validated
+  vertices/triangles, capped, optional normals/UVs), and `/mesh/assign` (Undo-backed MeshFilter/
+  MeshRenderer assignment). New `mesh` capability group.
+- Added `/create-shader` (`.shader` ShaderLab, verbatim or URP/Built-in template), `/create-folder`,
+  and `/create-text-asset` (extension-allowlisted) authoring endpoints.
+- Added allowlisted settings read/write: `/settings/get` and `/settings/set` over player/quality/
+  time/physics keys. New `settings` capability group, denied by team-safe/playtest/read-only.
+- New asset/mesh ops are batch-composable with transactional rollback; settings are excluded from
+  batches by design and are not Unity-Undo reversible (previous value returned for manual revert).
+- Reserved the `shadergraph-preview` capability group (off by default) for upcoming node authoring.
+
 ## 0.8.0
 
 - Added discovery schema v3 with policy profile and redacted token metadata.

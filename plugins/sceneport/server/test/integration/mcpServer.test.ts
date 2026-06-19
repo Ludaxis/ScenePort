@@ -68,6 +68,14 @@ const TOOL_NAMES = [
   "unity_create_script",
   "unity_create_material",
   "unity_create_prefab",
+  "unity_create_folder",
+  "unity_create_text_asset",
+  "unity_create_shader",
+  "unity_create_primitive_mesh",
+  "unity_create_procedural_mesh",
+  "unity_assign_mesh",
+  "unity_get_settings",
+  "unity_set_setting",
   "unity_menu_item_allowlist",
   "unity_execute_menu_item",
 ];
@@ -124,6 +132,14 @@ describe("MCP server tool surface", () => {
       "/assertions/evaluate": (r) => ({ body: { status: "ok", body: r.body } }),
       "/authoring/batch": (r) => ({ body: { status: "ok", body: r.body } }),
       "/create-script": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/create-folder": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/create-text-asset": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/create-shader": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/mesh/create-primitive": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/mesh/create-procedural": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/mesh/assign": (r) => ({ body: { status: "ok", body: r.body } }),
+      "/settings/get": () => ({ body: { status: "ok", settings: [{ key: "quality.level", type: "int", value: 2 }] } }),
+      "/settings/set": (r) => ({ body: { status: "ok", body: r.body } }),
       "/capture-game-view": (r) => ({
         body: { status: "ok", path: "/tmp/x.png", imageBase64: TINY_PNG, width: 16, height: 16, body: r.body },
       }),
@@ -236,6 +252,58 @@ describe("MCP server tool surface", () => {
     expect(bridge!.requests.some((r) => r.url === "/assertions/evaluate")).toBe(true);
     expect(bridge!.requests.some((r) => r.url === "/authoring/batch" && (r.body as Record<string, unknown>).dryRun === true)).toBe(true);
     expect(bridge!.requests.some((r) => r.url === "/create-script" && (r.body as Record<string, unknown>).dryRun === true)).toBe(true);
+  });
+
+  it("plumbs Phase 1 authoring tools to their endpoints", async () => {
+    await client!.callTool({ name: "unity_create_folder", arguments: { path: "Assets/Generated", dryRun: true } });
+    await client!.callTool({ name: "unity_create_text_asset", arguments: { path: "Assets/notes.txt", content: "hi", dryRun: true } });
+    await client!.callTool({ name: "unity_create_shader", arguments: { path: "Assets/Gen.shader", template: "urpUnlit", dryRun: true } });
+    await client!.callTool({ name: "unity_create_primitive_mesh", arguments: { path: "Assets/Cube.asset", shape: "box", dryRun: true } });
+    await client!.callTool({
+      name: "unity_create_procedural_mesh",
+      arguments: {
+        path: "Assets/Tri.asset",
+        vertices: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 0, y: 1, z: 0 },
+        ],
+        triangles: [0, 1, 2],
+        dryRun: true,
+      },
+    });
+    await client!.callTool({ name: "unity_assign_mesh", arguments: { instanceId: 7, meshPath: "Assets/Cube.asset", dryRun: true } });
+    await client!.callTool({ name: "unity_set_setting", arguments: { key: "quality.level", value: 3, dryRun: true } });
+    await client!.callTool({ name: "unity_get_settings", arguments: {} });
+
+    expect(
+      bridge!.requests.some((r) => r.url === "/create-folder" && (r.body as Record<string, unknown>).path === "Assets/Generated"),
+    ).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/create-text-asset" && (r.body as Record<string, unknown>).content === "hi")).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/create-shader" && (r.body as Record<string, unknown>).template === "urpUnlit")).toBe(
+      true,
+    );
+    expect(bridge!.requests.some((r) => r.url === "/mesh/create-primitive" && (r.body as Record<string, unknown>).shape === "box")).toBe(
+      true,
+    );
+    expect(
+      bridge!.requests.some((r) => r.url === "/mesh/create-procedural" && Array.isArray((r.body as Record<string, unknown>).triangles)),
+    ).toBe(true);
+    expect(
+      bridge!.requests.some((r) => r.url === "/mesh/assign" && (r.body as Record<string, unknown>).meshPath === "Assets/Cube.asset"),
+    ).toBe(true);
+    expect(bridge!.requests.some((r) => r.url === "/settings/set" && (r.body as Record<string, unknown>).key === "quality.level")).toBe(
+      true,
+    );
+    expect(bridge!.requests.some((r) => r.url === "/settings/get")).toBe(true);
+  });
+
+  it("marks settings read as read-only and mesh creation as a mutation", async () => {
+    const { tools } = await client!.listTools();
+    const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
+    expect(byName.unity_get_settings.annotations?.readOnlyHint).toBe(true);
+    expect(byName.unity_create_primitive_mesh.annotations?.readOnlyHint).toBe(false);
+    expect(byName.unity_set_setting.annotations?.readOnlyHint).toBe(false);
   });
 
   it("plumbs playtest commands to the bridge", async () => {

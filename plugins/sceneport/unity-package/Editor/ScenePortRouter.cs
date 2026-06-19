@@ -84,6 +84,14 @@ namespace ScenePort.McpBridge.Editor
                 ["/create-script"] = Route(AuthoringHandlers.CreateScript, "authoring", true),
                 ["/create-material"] = Route(AuthoringHandlers.CreateMaterial, "authoring", true),
                 ["/create-prefab"] = Route(AuthoringHandlers.CreatePrefab, "authoring", true),
+                ["/create-folder"] = Route(AuthoringHandlers.CreateFolder, "authoring", true),
+                ["/create-text-asset"] = Route(AuthoringHandlers.CreateTextAsset, "authoring", true),
+                ["/create-shader"] = Route(AuthoringHandlers.CreateShader, "authoring", true),
+                ["/mesh/create-primitive"] = Route(MeshHandlers.CreatePrimitiveMesh, "mesh", true),
+                ["/mesh/create-procedural"] = Route(MeshHandlers.CreateProceduralMesh, "mesh", true),
+                ["/mesh/assign"] = Route(MeshHandlers.AssignMesh, "mesh", true),
+                ["/settings/get"] = Route(SettingsHandlers.GetSettings, "settings", false),
+                ["/settings/set"] = Route(SettingsHandlers.SetSetting, "settings", true),
                 ["/menu-item-allowlist"] = Route(AuthoringHandlers.MenuItemAllowlist, "authoring", false),
                 ["/execute-menu-item"] = Route(AuthoringHandlers.ExecuteMenuItem, "authoring", true),
                 ["/asset-search"] = Route(AssetHandlers.AssetSearch, "assets", false),
@@ -375,12 +383,23 @@ namespace ScenePort.McpBridge.Editor
             "playtest",
             "safe-write",
             "authoring",
+            "mesh",
+            "settings",
+            "shadergraph-preview",
             "audit",
         };
 
         internal static bool Allows(string profile, string group, bool mutating)
         {
             profile = string.IsNullOrEmpty(profile) ? "full-safe-local" : profile;
+
+            // shadergraph-preview rides internal, version-fragile Unity APIs. It is off unless a
+            // profile opts in explicitly; full-safe-local (single-developer local trust) does.
+            if (group == "shadergraph-preview")
+            {
+                return profile == "full-safe-local";
+            }
+
             if (profile == "full-safe-local")
             {
                 return true;
@@ -393,12 +412,13 @@ namespace ScenePort.McpBridge.Editor
 
             if (profile == "team-safe")
             {
-                return group != "authoring" && group != "safe-write" && group != "play-mode" && group != "playtest";
+                return group != "authoring" && group != "safe-write" && group != "play-mode" && group != "playtest"
+                    && group != "mesh" && group != "settings";
             }
 
             if (profile == "playtest")
             {
-                return group != "authoring" && group != "safe-write";
+                return group != "authoring" && group != "safe-write" && group != "mesh" && group != "settings";
             }
 
             return !mutating;
@@ -411,7 +431,7 @@ namespace ScenePort.McpBridge.Editor
             for (var i = 0; i < AllGroups.Length; i++)
             {
                 var group = AllGroups[i];
-                var mutating = group == "safe-write" || group == "authoring" || group == "play-mode" || group == "playtest" || group == "capture" || group == "tests";
+                var mutating = group == "safe-write" || group == "authoring" || group == "play-mode" || group == "playtest" || group == "capture" || group == "tests" || group == "mesh" || group == "settings" || group == "shadergraph-preview";
                 if (Allows(profile, group, mutating))
                 {
                     allowed.Add(group);
@@ -450,6 +470,9 @@ namespace ScenePort.McpBridge.Editor
             "profiler",
             "safe-write",
             "authoring",
+            "mesh",
+            "settings",
+            "shadergraph-preview",
             "assets",
             "asset-graph",
             "tests",

@@ -106,3 +106,27 @@
 - Codex local marketplace guide
 - Signed releases where practical
 - Maintainer governance
+
+## v1.1: Verified Authoring — Geometry, Shaders, Settings (in progress)
+
+The mission tightens to "the Unity MCP layer where every edit is verified, reversible, and
+audited." All new capabilities route through the existing authoring spine (dry-run, Undo,
+transactional batch rollback, audit log, capability-group policy).
+
+- Folder creation and inert text/source-asset authoring (extension-allowlisted)
+- `.shader` (ShaderLab) authoring + the author → `wait_for_idle` → `get_compile_errors` verify loop
+- Mesh authoring: built-in primitives, validated procedural geometry, and Undo-backed assignment
+  (new `mesh` capability group)
+- Allowlisted project/quality/time/physics settings read and write (new `settings` capability group)
+
+## v1.2: Animation Systems (planned)
+
+- AnimationClip authoring from keyframe curves
+- AnimatorController creation, parameters, states, and transitions (state-machine graphs)
+- Undo-backed Animator assignment (new `animation` capability group)
+
+## v1.3: Shader Graph Node Authoring (preview, planned)
+
+- Programmatic `.shadergraph` node/slot authoring via the referenceable-JSON format
+- Version-pinned and capability-gated (`shadergraph-preview`, off by default)
+- Mandatory import round-trip validation with auto-rollback on mangling

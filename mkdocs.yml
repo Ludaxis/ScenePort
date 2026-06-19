@@ -52,6 +52,8 @@ nav:
       - Authoring:
           - UI from screenshot: recipes/create-ui-from-screenshot.md
           - Create prefab: recipes/create-prefab.md
+          - Create a mesh: recipes/create-mesh.md
+          - Author and verify a shader: recipes/author-and-verify-shader.md
       - Testing and playtest:
           - Visual regression: recipes/visual-regression.md
           - Write PlayMode test: recipes/write-playmode-test.md

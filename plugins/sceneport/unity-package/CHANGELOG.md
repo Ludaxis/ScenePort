@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Added scene-graph editing endpoints (`safe-write` group): `/reparent`, `/rename`,
+  `/reorder-sibling`, `/duplicate-game-object`, and `/delete-game-object` (destructive,
+  Undo-backed). Reparent keeps world position by default.
+- Added prefab-instance endpoints (`authoring` group): `/instantiate-prefab`, `/prefab-apply`,
+  and `/prefab-revert`.
+- Added animation authoring (new `animation` capability group, denied by team-safe/playtest/
+  read-only): `/animation/create-clip` (bakes float curves from keyframes),
+  `/animation/create-controller` (typed parameters), `/animation/add-state`,
+  `/animation/add-transition`, and `/animation/assign-animator` (Undo-backed scene assignment).
+- Activated the `shadergraph-preview` capability group (off by default): `/shadergraph/create`
+  writes a `.shadergraph` asset (verbatim JSON or minimal Unlit template) with round-trip
+  validation and rollback on import failure.
+- New scene/prefab/animation ops are batch-composable via `/authoring/batch` with transactional
+  rollback; scene-affecting ops are marked as scene mutations.
+
 ## 1.1.0
 
 - Added mesh authoring: `/mesh/create-primitive`, `/mesh/create-procedural` (range-validated

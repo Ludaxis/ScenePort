@@ -243,7 +243,7 @@ namespace ScenePort.McpBridge.Editor
         private static readonly string[] TextAssetExtensions =
         {
             ".txt", ".json", ".md", ".xml", ".csv", ".yaml", ".yml",
-            ".cs", ".shader", ".cginc", ".hlsl", ".compute", ".asmdef", ".asmref", ".uss", ".uxml",
+            ".cs", ".shader", ".cginc", ".hlsl", ".compute", ".asmdef", ".asmref", ".uss", ".uxml", ".shadergraph",
         };
 
         internal static object CreateFolder(ScenePortRequest req, ScenePortContext ctx)
@@ -421,13 +421,29 @@ namespace ScenePort.McpBridge.Editor
                 case "addComponent": return WrapSceneMutation("addComponent", SceneEditHandlers.AddComponent(req, ctx));
                 case "setSerializedProperty": return WrapSceneMutation("setSerializedProperty", SceneEditHandlers.SetSerializedProperty(req, ctx));
                 case "assignMesh": return WrapSceneMutation("assignMesh", MeshHandlers.AssignMesh(req, ctx));
+                case "createAnimationClip": return AnimationHandlers.CreateAnimationClip(req, ctx);
+                case "createAnimatorController": return AnimationHandlers.CreateAnimatorController(req, ctx);
+                case "addAnimatorState": return AnimationHandlers.AddAnimatorState(req, ctx);
+                case "addAnimatorTransition": return AnimationHandlers.AddAnimatorTransition(req, ctx);
+                case "assignAnimator": return WrapSceneMutation("assignAnimator", AnimationHandlers.AssignAnimator(req, ctx));
+                case "reparent": return SceneGraphHandlers.Reparent(req, ctx);
+                case "rename": return SceneGraphHandlers.Rename(req, ctx);
+                case "deleteGameObject": return SceneGraphHandlers.Delete(req, ctx);
+                case "duplicateGameObject": return SceneGraphHandlers.Duplicate(req, ctx);
+                case "reorderSibling": return SceneGraphHandlers.ReorderSibling(req, ctx);
+                case "instantiatePrefab": return SceneGraphHandlers.InstantiatePrefab(req, ctx);
+                case "prefabApply": return SceneGraphHandlers.ApplyPrefabOverrides(req, ctx);
+                case "prefabRevert": return SceneGraphHandlers.RevertPrefabOverrides(req, ctx);
                 default: return new ErrorResponse("request.invalid", "Unknown batch operation: " + op, "request", false);
             }
         }
 
         private static bool IsSceneMutation(string op)
         {
-            return op == "createGameObject" || op == "setTransform" || op == "addComponent" || op == "setSerializedProperty" || op == "assignMesh";
+            return op == "createGameObject" || op == "setTransform" || op == "addComponent" || op == "setSerializedProperty" || op == "assignMesh"
+                || op == "assignAnimator"
+                || op == "reparent" || op == "rename" || op == "deleteGameObject" || op == "duplicateGameObject" || op == "reorderSibling"
+                || op == "instantiatePrefab" || op == "prefabApply" || op == "prefabRevert";
         }
 
         private static object WrapSceneMutation(string operation, object result)

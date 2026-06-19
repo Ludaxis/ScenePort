@@ -111,5 +111,3 @@ namespace ScenePort.McpBridge.Editor
         }
     }
 }
-</content>
-</invoke>

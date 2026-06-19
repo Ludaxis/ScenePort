@@ -68,4 +68,3 @@ namespace ScenePort.McpBridge.Editor.Tests
         }
     }
 }
-</content>

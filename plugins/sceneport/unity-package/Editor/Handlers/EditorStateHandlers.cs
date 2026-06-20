@@ -227,8 +227,16 @@ namespace ScenePort.McpBridge.Editor
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, fileName);
 
-            // Always write the file artifact (existing behavior). ScreenCapture.CaptureScreenshot
-            // writes asynchronously, so for inline bytes we additionally grab a synchronous texture.
+            // Outside play mode, ScreenCapture.CaptureScreenshotAsTexture throws and
+            // CaptureScreenshot does not reliably render the Game View. Render the game
+            // camera into a RenderTexture instead so capture works in edit mode too.
+            if (!EditorApplication.isPlaying)
+            {
+                return CaptureGameCameraInEditMode(path, superSize, inline, maxEdge);
+            }
+
+            // Play mode: ScreenCapture captures the real Game View composition. It writes
+            // asynchronously, so for inline bytes we additionally grab a synchronous texture.
             ScreenCapture.CaptureScreenshot(path, superSize);
 
             var response = new CaptureGameViewResponse
@@ -258,6 +266,74 @@ namespace ScenePort.McpBridge.Editor
                         UnityEngine.Object.DestroyImmediate(texture);
                     }
                 }
+            }
+
+            return response;
+        }
+
+        private static CaptureGameViewResponse CaptureGameCameraInEditMode(string path, int superSize, bool inline, int maxEdge)
+        {
+            var camera = Camera.main;
+            if (camera == null)
+            {
+                var cameras = Camera.allCameras;
+                if (cameras != null && cameras.Length > 0)
+                {
+                    camera = cameras[0];
+                }
+            }
+
+            if (camera == null)
+            {
+                return new CaptureGameViewResponse
+                {
+                    Path = path,
+                    SuperSize = superSize,
+                    Note = "No active camera found to capture the Game View in edit mode.",
+                };
+            }
+
+            var width = Mathf.Clamp((camera.pixelWidth > 0 ? camera.pixelWidth : 1024) * superSize, 64, 4096);
+            var height = Mathf.Clamp((camera.pixelHeight > 0 ? camera.pixelHeight : 768) * superSize, 64, 4096);
+
+            var previousTarget = camera.targetTexture;
+            var previousActive = RenderTexture.active;
+            var renderTexture = new RenderTexture(width, height, 24);
+            var texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+            var response = new CaptureGameViewResponse
+            {
+                Path = path,
+                SuperSize = superSize,
+                Note = "Captured game camera in edit mode (full Game View composition requires play mode).",
+            };
+
+            try
+            {
+                camera.targetTexture = renderTexture;
+                camera.Render();
+                RenderTexture.active = renderTexture;
+                texture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                texture.Apply();
+                File.WriteAllBytes(path, texture.EncodeToPNG());
+
+                if (inline)
+                {
+                    var encoded = ScenePortImage.EncodeBase64(texture, maxEdge);
+                    if (!string.IsNullOrEmpty(encoded.Base64))
+                    {
+                        response.ImageBase64 = encoded.Base64;
+                        response.Width = encoded.Width;
+                        response.Height = encoded.Height;
+                    }
+                }
+            }
+            finally
+            {
+                camera.targetTexture = previousTarget;
+                RenderTexture.active = previousActive;
+                renderTexture.Release();
+                UnityEngine.Object.DestroyImmediate(renderTexture);
+                UnityEngine.Object.DestroyImmediate(texture);
             }
 
             return response;

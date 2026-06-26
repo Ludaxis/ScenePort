@@ -30,6 +30,12 @@ namespace ScenePort.McpBridge.Editor
         // foldout so the primary "Connect …" buttons are the first thing users see.
         private bool showAdvancedConnect;
         private ScenePortSetup.StatusModel status;
+
+        // The MCP registration key for this project. Defaults to a per-project slug
+        // (e.g. "sceneport-my-game") so several projects can each connect their own server
+        // without colliding on the shared "sceneport" key. Editable in the Connect section.
+        private string registrationName;
+
         private string statusMessage = string.Empty;
         private MessageType statusMessageType = MessageType.Info;
         private string doctorOutput = string.Empty;
@@ -238,6 +244,32 @@ namespace ScenePort.McpBridge.Editor
 
             EditorGUILayout.LabelField("Connect your AI tool", EditorStyles.boldLabel);
 
+            // ---- Registration name: unique per project so several can run at once ----
+            if (string.IsNullOrEmpty(registrationName))
+            {
+                registrationName = ScenePortSetup.InstanceName(projectPath);
+            }
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                registrationName = EditorGUILayout.TextField("Registration name", registrationName);
+                using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(projectPath)))
+                {
+                    if (GUILayout.Button("Reset", GUILayout.Width(56f)))
+                    {
+                        registrationName = ScenePortSetup.InstanceName(projectPath);
+                    }
+                }
+            }
+            EditorGUILayout.LabelField(
+                "Unique per project — keep distinct names to connect several Unity projects at once.",
+                EditorStyles.miniLabel);
+            if (string.IsNullOrEmpty(registrationName))
+            {
+                EditorGUILayout.HelpBox("Registration name is required.", MessageType.Warning);
+                registrationName = ScenePortSetup.ServerName;
+            }
+            EditorGUILayout.Space();
+
             // ---- Primary action: bundled-local connect (zero-dependency path) ----
             if (!environmentResolved)
             {
@@ -292,7 +324,7 @@ namespace ScenePort.McpBridge.Editor
                     EditorGUILayout.Space();
 
                     EditorGUILayout.LabelField("Claude Code (one-liner, local)", EditorStyles.miniBoldLabel);
-                    var claudeLocalCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath);
+                    var claudeLocalCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath, registrationName);
                     SelectableTextArea(claudeLocalCommand, 3);
                     if (GUILayout.Button("Copy Claude command (local)"))
                     {
@@ -301,7 +333,7 @@ namespace ScenePort.McpBridge.Editor
                     EditorGUILayout.Space();
 
                     EditorGUILayout.LabelField("Claude Code (.mcp.json, local)", EditorStyles.miniBoldLabel);
-                    var claudeLocalJson = ScenePortSetup.ClaudeLocalConfigJson(serverPath, projectPath);
+                    var claudeLocalJson = ScenePortSetup.ClaudeLocalConfigJson(serverPath, projectPath, registrationName);
                     SelectableTextArea(claudeLocalJson, 7);
                     if (GUILayout.Button("Copy Claude config (local)"))
                     {
@@ -310,7 +342,7 @@ namespace ScenePort.McpBridge.Editor
                     EditorGUILayout.Space();
 
                     EditorGUILayout.LabelField("Codex (config.toml, local)", EditorStyles.miniBoldLabel);
-                    var codexLocalToml = ScenePortSetup.CodexLocalConfigToml(serverPath, projectPath);
+                    var codexLocalToml = ScenePortSetup.CodexLocalConfigToml(serverPath, projectPath, registrationName);
                     SelectableTextArea(codexLocalToml, 6);
                     if (GUILayout.Button("Copy Codex config (local)"))
                     {
@@ -326,7 +358,7 @@ namespace ScenePort.McpBridge.Editor
                 EditorGUILayout.Space();
 
                 EditorGUILayout.LabelField("Claude Code (one-liner, npx)", EditorStyles.miniBoldLabel);
-                var claudeCommand = ScenePortSetup.ClaudeAddCommand(projectPath);
+                var claudeCommand = ScenePortSetup.ClaudeAddCommand(projectPath, registrationName);
                 SelectableTextArea(claudeCommand, 2);
                 if (GUILayout.Button("Copy Claude command (npx)"))
                 {
@@ -335,7 +367,7 @@ namespace ScenePort.McpBridge.Editor
                 EditorGUILayout.Space();
 
                 EditorGUILayout.LabelField("Claude Code (.mcp.json, npx)", EditorStyles.miniBoldLabel);
-                var claudeJson = ScenePortSetup.ClaudeConfigJson(projectPath);
+                var claudeJson = ScenePortSetup.ClaudeConfigJson(projectPath, registrationName);
                 SelectableTextArea(claudeJson, 7);
                 if (GUILayout.Button("Copy Claude config (npx)"))
                 {
@@ -344,7 +376,7 @@ namespace ScenePort.McpBridge.Editor
                 EditorGUILayout.Space();
 
                 EditorGUILayout.LabelField("Codex (config.toml, npx)", EditorStyles.miniBoldLabel);
-                var codexToml = ScenePortSetup.CodexConfigToml(projectPath);
+                var codexToml = ScenePortSetup.CodexConfigToml(projectPath, registrationName);
                 SelectableTextArea(codexToml, 6);
                 if (GUILayout.Button("Copy Codex config (npx)"))
                 {
@@ -468,6 +500,13 @@ namespace ScenePort.McpBridge.Editor
                 SetMessage("Could not read bridge status: " + ex.Message, MessageType.Warning);
             }
 
+            // Default the registration key to a per-project slug so multiple projects can each
+            // connect their own server. Only set it once so a user edit is preserved on refresh.
+            if (string.IsNullOrEmpty(registrationName) && status != null)
+            {
+                registrationName = ScenePortSetup.InstanceName(status.ProjectPath);
+            }
+
             Repaint();
         }
 
@@ -500,8 +539,9 @@ namespace ScenePort.McpBridge.Editor
         private void ConnectClaudeLocal()
         {
             var projectPath = status != null ? status.ProjectPath : SafeProjectPath();
+            var name = ResolveRegistrationName(projectPath);
             var serverPath = !string.IsNullOrEmpty(cachedServerPath) ? cachedServerPath : BundledServerPath();
-            var fallbackCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath);
+            var fallbackCommand = ScenePortSetup.ClaudeLocalAddCommand(serverPath, projectPath, name);
 
             if (string.IsNullOrEmpty(serverPath))
             {
@@ -525,7 +565,7 @@ namespace ScenePort.McpBridge.Editor
             var json = ScenePortSetup.LocalServerConfigJson(serverPath, projectPath);
             try
             {
-                var result = RunProcess(claude, new[] { "mcp", "add-json", ScenePortSetup.ServerName, json }, 30);
+                var result = RunProcess(claude, new[] { "mcp", "add-json", name, json }, 30);
                 if (!result.Launched)
                 {
                     EditorGUIUtility.systemCopyBuffer = fallbackCommand;
@@ -536,8 +576,8 @@ namespace ScenePort.McpBridge.Editor
                 var combined = (result.StdOut + "\n" + result.StdErr).Trim();
                 if (result.ExitCode == 0)
                 {
-                    EditorUtility.DisplayDialog("ScenePort", "Connected the bundled ScenePort server to Claude Code.\n\n" + combined, "OK");
-                    SetMessage("Claude connected (local server).", MessageType.Info);
+                    EditorUtility.DisplayDialog("ScenePort", "Connected the bundled ScenePort server to Claude Code as '" + name + "'.\n\n" + combined, "OK");
+                    SetMessage("Claude connected (local server) as '" + name + "'.", MessageType.Info);
                 }
                 else
                 {
@@ -557,6 +597,7 @@ namespace ScenePort.McpBridge.Editor
             // Codex has no register-by-CLI flow here; copy the TOML for the user to paste
             // into ~/.codex/config.toml.
             var projectPath = status != null ? status.ProjectPath : SafeProjectPath();
+            var name = ResolveRegistrationName(projectPath);
             var serverPath = !string.IsNullOrEmpty(cachedServerPath) ? cachedServerPath : BundledServerPath();
             if (string.IsNullOrEmpty(serverPath))
             {
@@ -564,7 +605,7 @@ namespace ScenePort.McpBridge.Editor
                 return;
             }
 
-            var toml = ScenePortSetup.CodexLocalConfigToml(serverPath, projectPath);
+            var toml = ScenePortSetup.CodexLocalConfigToml(serverPath, projectPath, name);
             EditorGUIUtility.systemCopyBuffer = toml;
             EditorUtility.DisplayDialog(
                 "Codex config copied",
@@ -577,8 +618,9 @@ namespace ScenePort.McpBridge.Editor
         private void WriteClaudeConfig()
         {
             var projectPath = status != null ? status.ProjectPath : SafeProjectPath();
+            var name = ResolveRegistrationName(projectPath);
             var json = ScenePortSetup.NpxServerConfigJson(projectPath);
-            var fallback = ScenePortSetup.ClaudeAddCommand(projectPath);
+            var fallback = ScenePortSetup.ClaudeAddCommand(projectPath, name);
             try
             {
                 var claude = !string.IsNullOrEmpty(cachedClaudePath) ? cachedClaudePath : ResolveExecutable("claude");
@@ -593,7 +635,7 @@ namespace ScenePort.McpBridge.Editor
                     return;
                 }
 
-                var result = RunProcess(claude, new[] { "mcp", "add-json", ScenePortSetup.ServerName, json }, 30);
+                var result = RunProcess(claude, new[] { "mcp", "add-json", name, json }, 30);
                 if (!result.Launched)
                 {
                     EditorGUIUtility.systemCopyBuffer = fallback;
@@ -608,8 +650,8 @@ namespace ScenePort.McpBridge.Editor
                 var combined = (result.StdOut + "\n" + result.StdErr).Trim();
                 if (result.ExitCode == 0)
                 {
-                    EditorUtility.DisplayDialog("ScenePort", "Registered ScenePort with Claude Code.\n\n" + combined, "OK");
-                    SetMessage("Claude config written successfully.", MessageType.Info);
+                    EditorUtility.DisplayDialog("ScenePort", "Registered ScenePort with Claude Code as '" + name + "'.\n\n" + combined, "OK");
+                    SetMessage("Claude config written successfully as '" + name + "'.", MessageType.Info);
                 }
                 else
                 {
@@ -816,6 +858,17 @@ namespace ScenePort.McpBridge.Editor
             statusMessage = message;
             statusMessageType = type;
             Repaint();
+        }
+
+        /// <summary>
+        /// The registration key to use for a connect/write action: the user-edited field when
+        /// set, otherwise a per-project slug so several projects never collide on "sceneport".
+        /// </summary>
+        private string ResolveRegistrationName(string projectPath)
+        {
+            return string.IsNullOrEmpty(registrationName)
+                ? ScenePortSetup.InstanceName(projectPath)
+                : registrationName;
         }
 
         private static string SafeProjectPath()

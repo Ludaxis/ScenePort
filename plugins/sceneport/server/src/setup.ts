@@ -15,6 +15,31 @@ export interface McpServerConfig {
 }
 
 /**
+ * The default registration key. Single-project users keep this; driving several
+ * Unity projects at once requires a distinct key per project (see instanceName).
+ */
+export const DEFAULT_INSTANCE_NAME = "sceneport";
+
+/**
+ * Derive a stable, distinct registration key from a project path so multiple
+ * Unity projects can be registered side by side without colliding on the
+ * default "sceneport" key. Slugifies the project folder name, e.g.
+ * "/Users/me/Games/My Game" -> "sceneport-my-game".
+ */
+export function instanceName(projectPath: string, prefix: string = DEFAULT_INSTANCE_NAME): string {
+  const base =
+    projectPath
+      .replace(/[/\\]+$/, "")
+      .split(/[/\\]/)
+      .pop() ?? "";
+  const slug = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug ? `${prefix}-${slug}` : prefix;
+}
+
+/**
  * The MCP server entry that hosts (Claude, Codex) should register.
  * We publish to npm, so default to the npx form — no clone/build required.
  */
@@ -30,20 +55,21 @@ export function npxServerConfig(projectPath: string): McpServerConfig {
 
 /**
  * The exact shell command a user runs to register ScenePort with Claude.
+ * Pass a distinct `name` per project to drive several Unity projects at once.
  */
-export function claudeAddCommand(projectPath: string): string {
+export function claudeAddCommand(projectPath: string, name: string = DEFAULT_INSTANCE_NAME): string {
   const json = JSON.stringify(npxServerConfig(projectPath));
-  return `claude mcp add-json sceneport '${json}'`;
+  return `claude mcp add-json ${name} '${json}'`;
 }
 
 /**
  * JSON snippet a Codex user pastes into their MCP config.
  */
-export function codexConfigJson(projectPath: string): string {
+export function codexConfigJson(projectPath: string, name: string = DEFAULT_INSTANCE_NAME): string {
   return JSON.stringify(
     {
       mcpServers: {
-        sceneport: npxServerConfig(projectPath),
+        [name]: npxServerConfig(projectPath),
       },
     },
     null,
@@ -54,15 +80,15 @@ export function codexConfigJson(projectPath: string): string {
 /**
  * TOML snippet a Codex user can paste into ~/.codex/config.toml.
  */
-export function codexConfigToml(projectPath: string): string {
+export function codexConfigToml(projectPath: string, name: string = DEFAULT_INSTANCE_NAME): string {
   const server = npxServerConfig(projectPath);
   const args = server.args.map((arg) => JSON.stringify(arg)).join(", ");
   return [
-    "[mcp_servers.sceneport]",
+    `[mcp_servers.${name}]`,
     `command = ${JSON.stringify(server.command)}`,
     `args = [${args}]`,
     "",
-    "[mcp_servers.sceneport.env]",
+    `[mcp_servers.${name}.env]`,
     `SCENEPORT_PROJECT_PATH = ${JSON.stringify(projectPath)}`,
   ].join("\n");
 }

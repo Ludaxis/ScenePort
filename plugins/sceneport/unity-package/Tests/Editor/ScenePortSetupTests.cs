@@ -69,6 +69,47 @@ namespace ScenePort.McpBridge.Editor.Tests
         }
 
         [Test]
+        public void InstanceNameDerivesDistinctSlugFromProjectFolder()
+        {
+            Assert.AreEqual("sceneport-myunitygame", ScenePortSetup.InstanceName(ProjectPath));
+            Assert.AreEqual("sceneport-my-game", ScenePortSetup.InstanceName("/Users/me/Games/My Game"));
+            Assert.AreEqual("sceneport-my-game", ScenePortSetup.InstanceName("/Users/me/Games/My Game/"));
+            Assert.AreEqual("sceneport-alphaproject", ScenePortSetup.InstanceName("C:\\Unity\\AlphaProject"));
+        }
+
+        [Test]
+        public void InstanceNameFallsBackToPrefixWhenNoSlug()
+        {
+            Assert.AreEqual("sceneport", ScenePortSetup.InstanceName("/"));
+            Assert.AreEqual("sceneport", ScenePortSetup.InstanceName(string.Empty));
+        }
+
+        [Test]
+        public void ConfigBuildersHonorCustomRegistrationName()
+        {
+            StringAssert.Contains(
+                "claude mcp add-json sceneport-alpha",
+                ScenePortSetup.ClaudeAddCommand(ProjectPath, "sceneport-alpha"));
+
+            var claudeJson = JObject.Parse(ScenePortSetup.ClaudeConfigJson(ProjectPath, "sceneport-alpha"));
+            Assert.IsNotNull(claudeJson["mcpServers"]["sceneport-alpha"], "Expected mcpServers.sceneport-alpha entry");
+            Assert.IsNull(claudeJson["mcpServers"]["sceneport"], "Default key should not be present");
+
+            var toml = ScenePortSetup.CodexConfigToml(ProjectPath, "sceneport-alpha");
+            StringAssert.Contains("[mcp_servers.sceneport-alpha]", toml);
+            StringAssert.Contains("[mcp_servers.sceneport-alpha.env]", toml);
+
+            StringAssert.Contains(
+                "claude mcp add-json sceneport-alpha",
+                ScenePortSetup.ClaudeLocalAddCommand(ServerPath, ProjectPath, "sceneport-alpha"));
+            var localJson = JObject.Parse(ScenePortSetup.ClaudeLocalConfigJson(ServerPath, ProjectPath, "sceneport-alpha"));
+            Assert.IsNotNull(localJson["mcpServers"]["sceneport-alpha"]);
+            StringAssert.Contains(
+                "[mcp_servers.sceneport-alpha]",
+                ScenePortSetup.CodexLocalConfigToml(ServerPath, ProjectPath, "sceneport-alpha"));
+        }
+
+        [Test]
         public void UrlForPortFormatsLoopback()
         {
             Assert.AreEqual("http://127.0.0.1:38987", ScenePortSetup.UrlForPort(38987));

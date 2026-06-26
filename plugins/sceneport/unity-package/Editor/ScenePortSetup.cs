@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -95,6 +96,35 @@ namespace ScenePort.McpBridge.Editor
         }
 
         /// <summary>
+        /// Derives a stable, distinct registration key from a project path so several Unity
+        /// projects can each register their own MCP server without colliding on the default
+        /// "sceneport" key. Slugifies the project folder name, e.g.
+        /// "/Users/me/Games/My Game" -> "sceneport-my-game". Falls back to the bare prefix
+        /// when no slug can be derived.
+        /// </summary>
+        internal static string InstanceName(string projectPath, string prefix = ServerName)
+        {
+            var trimmed = (projectPath ?? string.Empty).TrimEnd('/', '\\');
+            var sep = trimmed.LastIndexOfAny(new[] { '/', '\\' });
+            var baseName = sep >= 0 ? trimmed.Substring(sep + 1) : trimmed;
+
+            var sb = new StringBuilder(baseName.Length);
+            foreach (var ch in baseName.ToLowerInvariant())
+            {
+                sb.Append((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ? ch : '-');
+            }
+
+            var slug = sb.ToString();
+            while (slug.Contains("--"))
+            {
+                slug = slug.Replace("--", "-");
+            }
+            slug = slug.Trim('-');
+
+            return string.IsNullOrEmpty(slug) ? prefix : prefix + "-" + slug;
+        }
+
+        /// <summary>
         /// The npx-based MCP server config object (without an outer name key). This is the
         /// inner object used both in the Claude one-liner and the Codex/Claude config blocks.
         /// Shape: <c>{ "command": "npx", "args": ["-y","sceneport-mcp"], "env": { ... } }</c>.
@@ -125,22 +155,22 @@ namespace ScenePort.McpBridge.Editor
         /// The exact shell command that registers ScenePort with Claude Code via the CLI.
         /// Example: <c>claude mcp add-json sceneport '{"command":"npx",...}'</c>.
         /// </summary>
-        internal static string ClaudeAddCommand(string projectPath)
+        internal static string ClaudeAddCommand(string projectPath, string name = ServerName)
         {
-            return "claude mcp add-json " + ServerName + " '" + NpxServerConfigJson(projectPath) + "'";
+            return "claude mcp add-json " + name + " '" + NpxServerConfigJson(projectPath) + "'";
         }
 
         /// <summary>
         /// Pretty-printed Claude Code config block: the standard <c>mcpServers</c> map with
         /// ScenePort under it. Suitable for pasting into <c>.mcp.json</c> / settings.
         /// </summary>
-        internal static string ClaudeConfigJson(string projectPath)
+        internal static string ClaudeConfigJson(string projectPath, string name = ServerName)
         {
             var root = new JObject
             {
                 ["mcpServers"] = new JObject
                 {
-                    [ServerName] = NpxServerConfig(projectPath),
+                    [name] = NpxServerConfig(projectPath),
                 },
             };
             return root.ToString(Formatting.Indented);
@@ -150,16 +180,16 @@ namespace ScenePort.McpBridge.Editor
         /// Codex MCP config block in TOML form. Codex reads <c>~/.codex/config.toml</c> with
         /// <c>[mcp_servers.&lt;name&gt;]</c> tables.
         /// </summary>
-        internal static string CodexConfigToml(string projectPath)
+        internal static string CodexConfigToml(string projectPath, string name = ServerName)
         {
             var safePath = (projectPath ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
             var lines = new List<string>
             {
-                "[mcp_servers." + ServerName + "]",
+                "[mcp_servers." + name + "]",
                 "command = \"npx\"",
                 "args = [\"-y\", \"" + NpmPackage + "\"]",
                 "",
-                "[mcp_servers." + ServerName + ".env]",
+                "[mcp_servers." + name + ".env]",
                 ProjectPathEnvVar + " = \"" + safePath + "\"",
             };
             return string.Join("\n", lines);
@@ -169,9 +199,9 @@ namespace ScenePort.McpBridge.Editor
         /// Codex MCP config block in JSON form, for Codex builds that accept JSON config.
         /// Mirrors the Claude shape under an <c>mcpServers</c> map.
         /// </summary>
-        internal static string CodexConfigJson(string projectPath)
+        internal static string CodexConfigJson(string projectPath, string name = ServerName)
         {
-            return ClaudeConfigJson(projectPath);
+            return ClaudeConfigJson(projectPath, name);
         }
 
         /// <summary>
@@ -220,22 +250,22 @@ namespace ScenePort.McpBridge.Editor
         /// Claude Code via the CLI, e.g.
         /// <c>claude mcp add-json sceneport '{"command":"node","args":["…/index.js"],…}'</c>.
         /// </summary>
-        internal static string ClaudeLocalAddCommand(string serverPath, string projectPath)
+        internal static string ClaudeLocalAddCommand(string serverPath, string projectPath, string name = ServerName)
         {
-            return "claude mcp add-json " + ServerName + " '" + LocalServerConfigJson(serverPath, projectPath) + "'";
+            return "claude mcp add-json " + name + " '" + LocalServerConfigJson(serverPath, projectPath) + "'";
         }
 
         /// <summary>
         /// Pretty-printed Claude Code config block for the bundled server: the standard
         /// <c>mcpServers</c> map with ScenePort under it using <c>node &lt;serverPath&gt;</c>.
         /// </summary>
-        internal static string ClaudeLocalConfigJson(string serverPath, string projectPath)
+        internal static string ClaudeLocalConfigJson(string serverPath, string projectPath, string name = ServerName)
         {
             var root = new JObject
             {
                 ["mcpServers"] = new JObject
                 {
-                    [ServerName] = LocalServerConfig(serverPath, projectPath),
+                    [name] = LocalServerConfig(serverPath, projectPath),
                 },
             };
             return root.ToString(Formatting.Indented);
@@ -245,17 +275,17 @@ namespace ScenePort.McpBridge.Editor
         /// Codex MCP config block in TOML form for the bundled server. Mirrors
         /// <see cref="CodexConfigToml"/> but with the <c>node &lt;serverPath&gt;</c> command.
         /// </summary>
-        internal static string CodexLocalConfigToml(string serverPath, string projectPath)
+        internal static string CodexLocalConfigToml(string serverPath, string projectPath, string name = ServerName)
         {
             var safePath = TomlEscape(projectPath);
             var safeServer = TomlEscape(serverPath);
             var lines = new List<string>
             {
-                "[mcp_servers." + ServerName + "]",
+                "[mcp_servers." + name + "]",
                 "command = \"node\"",
                 "args = [\"" + safeServer + "\"]",
                 "",
-                "[mcp_servers." + ServerName + ".env]",
+                "[mcp_servers." + name + ".env]",
                 ProjectPathEnvVar + " = \"" + safePath + "\"",
             };
             return string.Join("\n", lines);
@@ -265,9 +295,9 @@ namespace ScenePort.McpBridge.Editor
         /// Codex MCP config block in JSON form for the bundled server, for Codex builds
         /// that accept JSON config. Mirrors the Claude shape under an <c>mcpServers</c> map.
         /// </summary>
-        internal static string CodexLocalConfigJson(string serverPath, string projectPath)
+        internal static string CodexLocalConfigJson(string serverPath, string projectPath, string name = ServerName)
         {
-            return ClaudeLocalConfigJson(serverPath, projectPath);
+            return ClaudeLocalConfigJson(serverPath, projectPath, name);
         }
 
         /// <summary>

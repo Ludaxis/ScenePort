@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## v1.2.0 — 2026-06-26
+
+### Multiple Unity projects at once
+
+- **Unity Setup window** (`Tools ▸ ScenePort ▸ Setup`) now shows an editable **Registration name**
+  field, pre-filled with a per-project slug (e.g. `sceneport-my-game`). The one-click
+  **Connect Claude (local)** action and every copyable config block use it, so opening several
+  projects and connecting each one no longer overwrites a shared `sceneport` entry.
+- `sceneport config claude|codex` and `sceneport init` now take `--name <key>` (or `--name auto`
+  to derive a slug from the project folder), so several projects can each register their own MCP
+  server without colliding on the default `sceneport` key. Each server stays pinned to one project
+  via `SCENEPORT_PROJECT_PATH`, keeping per-project token isolation and the wrong-project guard.
+- Docs: new "Multiple Unity projects at once" section in `docs/setup.md`.
 
 ### Scene Graph, Prefabs, and Animation
 

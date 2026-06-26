@@ -13561,7 +13561,7 @@ function categoryForStatus(status) {
 }
 
 // src/version.ts
-var VERSION = "1.1.0";
+var VERSION = "1.2.0";
 
 // src/doctor.ts
 function check2(name, status, detail) {
@@ -24028,6 +24028,12 @@ function createScenePortServer(client) {
 }
 
 // src/setup.ts
+var DEFAULT_INSTANCE_NAME = "sceneport";
+function instanceName(projectPath, prefix = DEFAULT_INSTANCE_NAME) {
+  const base = projectPath.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? "";
+  const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug ? `${prefix}-${slug}` : prefix;
+}
 function npxServerConfig(projectPath) {
   return {
     command: "npx",
@@ -24037,30 +24043,30 @@ function npxServerConfig(projectPath) {
     }
   };
 }
-function claudeAddCommand(projectPath) {
+function claudeAddCommand(projectPath, name = DEFAULT_INSTANCE_NAME) {
   const json = JSON.stringify(npxServerConfig(projectPath));
-  return `claude mcp add-json sceneport '${json}'`;
+  return `claude mcp add-json ${name} '${json}'`;
 }
-function codexConfigJson(projectPath) {
+function codexConfigJson(projectPath, name = DEFAULT_INSTANCE_NAME) {
   return JSON.stringify(
     {
       mcpServers: {
-        sceneport: npxServerConfig(projectPath)
+        [name]: npxServerConfig(projectPath)
       }
     },
     null,
     2
   );
 }
-function codexConfigToml(projectPath) {
+function codexConfigToml(projectPath, name = DEFAULT_INSTANCE_NAME) {
   const server = npxServerConfig(projectPath);
   const args = server.args.map((arg) => JSON.stringify(arg)).join(", ");
   return [
-    "[mcp_servers.sceneport]",
+    `[mcp_servers.${name}]`,
     `command = ${JSON.stringify(server.command)}`,
     `args = [${args}]`,
     "",
-    "[mcp_servers.sceneport.env]",
+    `[mcp_servers.${name}.env]`,
     `SCENEPORT_PROJECT_PATH = ${JSON.stringify(projectPath)}`
   ].join("\n");
 }
@@ -24073,23 +24079,34 @@ function resolveProjectPath(env = process.env, cwd = process.cwd()) {
 }
 
 // src/index.ts
-function printHostConfig(host) {
+function resolveInstanceName(argv, projectPath) {
+  const flag = argv.indexOf("--name");
+  if (flag < 0) {
+    return DEFAULT_INSTANCE_NAME;
+  }
+  const value = argv[flag + 1];
+  if (!value || value === "auto") {
+    return instanceName(projectPath);
+  }
+  return value;
+}
+function printHostConfig(host, name) {
   const projectPath = resolveProjectPath(process.env, process.cwd());
   if (host === "claude") {
-    console.log(claudeAddCommand(projectPath));
+    console.log(claudeAddCommand(projectPath, name));
     return;
   }
-  console.log(codexConfigJson(projectPath));
+  console.log(codexConfigJson(projectPath, name));
 }
-function writeClaudeConfig(projectPath) {
+function writeClaudeConfig(projectPath, name) {
   const config2 = npxServerConfig(projectPath);
   const json = JSON.stringify(config2);
   try {
-    const output = execFileSync("claude", ["mcp", "add-json", "sceneport", json], { encoding: "utf8" });
+    const output = execFileSync("claude", ["mcp", "add-json", name, json], { encoding: "utf8" });
     if (output.trim()) {
       console.log(output.trim());
     }
-    console.log("Registered ScenePort with Claude (npx form).");
+    console.log(`Registered ScenePort with Claude as '${name}' (npx form).`);
     return 0;
   } catch (error2) {
     const code = typeof error2 === "object" && error2 && "code" in error2 ? String(error2.code) : "";
@@ -24103,63 +24120,69 @@ function writeClaudeConfig(projectPath) {
       console.error("Running `claude mcp add-json` failed.");
     }
     console.error("Run this manually instead:");
-    console.error(`  ${claudeAddCommand(projectPath)}`);
+    console.error(`  ${claudeAddCommand(projectPath, name)}`);
     return 1;
   }
 }
-function writeCodexConfig(projectPath, target) {
+function writeCodexConfig(projectPath, name, target) {
   const destination = resolve2(target ?? "./sceneport.codex.json");
   try {
-    writeFileSync(destination, `${codexConfigJson(projectPath)}
+    writeFileSync(destination, `${codexConfigJson(projectPath, name)}
 `, "utf8");
   } catch (error2) {
     console.error(`Could not write Codex config to ${destination}: ${error2 instanceof Error ? error2.message : String(error2)}`);
     return 1;
   }
   console.log(`Wrote Codex MCP config to ${destination}.`);
-  console.log("Merge its `mcpServers.sceneport` entry into your Codex MCP config, or paste this TOML into ~/.codex/config.toml:");
+  console.log(`Merge its \`mcpServers.${name}\` entry into your Codex MCP config, or paste this TOML into ~/.codex/config.toml:`);
   console.log("");
-  console.log(codexConfigToml(projectPath));
+  console.log(codexConfigToml(projectPath, name));
   return 0;
 }
 function runConfig(host, argv) {
   const write = argv.includes("--write");
+  const projectPath = resolveProjectPath(process.env, process.cwd());
+  const name = resolveInstanceName(argv, projectPath);
   if (host === "claude") {
     if (!write) {
-      printHostConfig("claude");
+      printHostConfig("claude", name);
       return 0;
     }
-    return writeClaudeConfig(resolveProjectPath(process.env, process.cwd()));
+    return writeClaudeConfig(projectPath, name);
   }
   if (!write) {
-    printHostConfig("codex");
+    printHostConfig("codex", name);
     return 0;
   }
   const targetFlag = argv.indexOf("--target");
   const target = targetFlag >= 0 ? argv[targetFlag + 1] : void 0;
-  return writeCodexConfig(resolveProjectPath(process.env, process.cwd()), target);
+  return writeCodexConfig(projectPath, name, target);
 }
 async function runInit(argv) {
   const write = argv.includes("--write");
   const projectPath = resolveProjectPath(process.env, process.cwd());
+  const name = resolveInstanceName(argv, projectPath);
   console.log(`ScenePort setup ${VERSION}`);
   console.log(`Unity project: ${projectPath}`);
+  console.log(`Registration name: ${name}`);
   console.log("");
   await runDoctor(process.env, process.cwd());
   console.log("");
   console.log("Recommended Claude command:");
-  console.log(`  ${claudeAddCommand(projectPath)}`);
+  console.log(`  ${claudeAddCommand(projectPath, name)}`);
   console.log("");
   console.log("Recommended Codex config (paste into your Codex MCP config):");
-  console.log(codexConfigJson(projectPath));
+  console.log(codexConfigJson(projectPath, name));
   console.log("");
   if (write) {
     console.log("Writing the Claude registration now...");
-    return writeClaudeConfig(projectPath);
+    return writeClaudeConfig(projectPath, name);
   }
   console.log("Next steps:");
   console.log("  - Run `sceneport config claude --write` to register with Claude automatically.");
   console.log("  - Run `sceneport config codex --write` to write a Codex config snippet.");
+  console.log("  - Driving several Unity projects at once? Add `--name auto` (or `--name <key>`)");
+  console.log("    and run the command once per project so each gets its own registration.");
   return 0;
 }
 async function runAuth(command) {
@@ -24219,7 +24242,7 @@ async function main() {
       process.exitCode = runConfig(host, process.argv.slice(4));
       return;
     }
-    console.error("Usage: sceneport config claude|codex [--write] [--target <path>]");
+    console.error("Usage: sceneport config claude|codex [--write] [--name <key>|auto] [--target <path>]");
     process.exitCode = 1;
     return;
   }

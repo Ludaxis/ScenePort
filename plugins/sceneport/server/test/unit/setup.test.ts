@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { claudeAddCommand, codexConfigJson, codexConfigToml, npxServerConfig, resolveProjectPath } from "../../src/setup.js";
+import { claudeAddCommand, codexConfigJson, codexConfigToml, instanceName, npxServerConfig, resolveProjectPath } from "../../src/setup.js";
 
 describe("npxServerConfig", () => {
   it("uses the npx form with the project path in env", () => {
@@ -44,6 +44,32 @@ describe("codexConfigToml", () => {
     expect(toml).toContain("[mcp_servers.sceneport]");
     expect(toml).toContain('command = "npx"');
     expect(toml).toContain('SCENEPORT_PROJECT_PATH = "/path/to/UnityProject"');
+  });
+});
+
+describe("instanceName", () => {
+  it("derives a distinct slug from the project folder name", () => {
+    expect(instanceName("/Users/me/Games/My Game")).toBe("sceneport-my-game");
+    expect(instanceName("/Users/me/Games/My Game/")).toBe("sceneport-my-game");
+    expect(instanceName("C:\\Unity\\AlphaProject")).toBe("sceneport-alphaproject");
+  });
+
+  it("falls back to the bare prefix when no slug can be derived", () => {
+    expect(instanceName("/")).toBe("sceneport");
+  });
+});
+
+describe("custom registration name", () => {
+  it("threads the name through every host config form", () => {
+    expect(claudeAddCommand("/path/to/UnityProject", "sceneport-alpha")).toContain("claude mcp add-json sceneport-alpha");
+
+    const json = JSON.parse(codexConfigJson("/path/to/UnityProject", "sceneport-alpha"));
+    expect(json.mcpServers["sceneport-alpha"].env.SCENEPORT_PROJECT_PATH).toBe("/path/to/UnityProject");
+    expect(json.mcpServers.sceneport).toBeUndefined();
+
+    const toml = codexConfigToml("/path/to/UnityProject", "sceneport-alpha");
+    expect(toml).toContain("[mcp_servers.sceneport-alpha]");
+    expect(toml).toContain("[mcp_servers.sceneport-alpha.env]");
   });
 });
 

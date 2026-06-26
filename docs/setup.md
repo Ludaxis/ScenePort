@@ -69,6 +69,44 @@ folder so it can find `Library/ScenePort/bridge.json`.
 - `SCENEPORT_TOKEN_FILE` — optional; point at a local token file for CI or credential-store
   flows.
 
+## Multiple Unity projects at once
+
+Each MCP server process talks to exactly one Unity bridge, pinned by `SCENEPORT_PROJECT_PATH`.
+To drive several projects open at the same time, register **one MCP server per project**, each
+with a distinct name and its own `SCENEPORT_PROJECT_PATH`. Without distinct names the
+registrations collide on the default `sceneport` key, and the zero-config fallback would
+otherwise resolve every server to whichever editor happened to grab port `38987`.
+
+**Easiest — from inside Unity:** open each project and use **Tools ▸ ScenePort ▸ Setup**. The
+window pre-fills a unique **Registration name** derived from the project folder (e.g.
+`sceneport-my-game`); click **Connect Claude (local)** in each project and they register side by
+side without collisions. Edit the name field first if you want a different key.
+
+**From the CLI**, use the `--name` flag (`--name auto` derives a slug from the project folder):
+
+```bash
+npx -y sceneport-mcp config claude --name auto --write   # run once per project, from each project
+# or pin the name yourself:
+npx -y sceneport-mcp config claude --name sceneport-alpha --write
+```
+
+Or write the entries by hand — for example a Claude `.mcp.json` for four projects:
+
+```json
+{
+  "mcpServers": {
+    "sceneport-alpha":   { "command": "npx", "args": ["-y", "sceneport-mcp"], "env": { "SCENEPORT_PROJECT_PATH": "/abs/path/Alpha" } },
+    "sceneport-bravo":   { "command": "npx", "args": ["-y", "sceneport-mcp"], "env": { "SCENEPORT_PROJECT_PATH": "/abs/path/Bravo" } },
+    "sceneport-charlie": { "command": "npx", "args": ["-y", "sceneport-mcp"], "env": { "SCENEPORT_PROJECT_PATH": "/abs/path/Charlie" } },
+    "sceneport-delta":   { "command": "npx", "args": ["-y", "sceneport-mcp"], "env": { "SCENEPORT_PROJECT_PATH": "/abs/path/Delta" } }
+  }
+}
+```
+
+Each entry is its own stdio process with its own per-project token, and the editors coexist on
+their own ports in the `38987–38996` range. Tools are then addressed per server (e.g.
+`sceneport-alpha`'s `unity_scene_graph` vs `sceneport-delta`'s).
+
 ## Local build (developing ScenePort itself)
 
 ```bash

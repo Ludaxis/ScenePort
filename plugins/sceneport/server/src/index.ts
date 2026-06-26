@@ -5,28 +5,53 @@ import { resolve } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { runDoctor } from "./doctor.js";
 import { createScenePortServer } from "./server.js";
-import { claudeAddCommand, codexConfigJson, codexConfigToml, npxServerConfig, resolveProjectPath } from "./setup.js";
+import {
+  DEFAULT_INSTANCE_NAME,
+  claudeAddCommand,
+  codexConfigJson,
+  codexConfigToml,
+  instanceName,
+  npxServerConfig,
+  resolveProjectPath,
+} from "./setup.js";
 import { UnityBridgeClient } from "./unityClient.js";
 import { VERSION } from "./version.js";
 
-function printHostConfig(host: "codex" | "claude") {
-  const projectPath = resolveProjectPath(process.env, process.cwd());
-  if (host === "claude") {
-    console.log(claudeAddCommand(projectPath));
-    return;
+/**
+ * Resolve the registration key for this project. `--name <key>` pins it
+ * explicitly; `--name auto` derives a distinct key from the project folder so
+ * several Unity projects can be registered side by side. Defaults to "sceneport".
+ */
+function resolveInstanceName(argv: string[], projectPath: string): string {
+  const flag = argv.indexOf("--name");
+  if (flag < 0) {
+    return DEFAULT_INSTANCE_NAME;
   }
-  console.log(codexConfigJson(projectPath));
+  const value = argv[flag + 1];
+  if (!value || value === "auto") {
+    return instanceName(projectPath);
+  }
+  return value;
 }
 
-function writeClaudeConfig(projectPath: string): number {
+function printHostConfig(host: "codex" | "claude", name: string) {
+  const projectPath = resolveProjectPath(process.env, process.cwd());
+  if (host === "claude") {
+    console.log(claudeAddCommand(projectPath, name));
+    return;
+  }
+  console.log(codexConfigJson(projectPath, name));
+}
+
+function writeClaudeConfig(projectPath: string, name: string): number {
   const config = npxServerConfig(projectPath);
   const json = JSON.stringify(config);
   try {
-    const output = execFileSync("claude", ["mcp", "add-json", "sceneport", json], { encoding: "utf8" });
+    const output = execFileSync("claude", ["mcp", "add-json", name, json], { encoding: "utf8" });
     if (output.trim()) {
       console.log(output.trim());
     }
-    console.log("Registered ScenePort with Claude (npx form).");
+    console.log(`Registered ScenePort with Claude as '${name}' (npx form).`);
     return 0;
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
@@ -40,69 +65,75 @@ function writeClaudeConfig(projectPath: string): number {
       console.error("Running `claude mcp add-json` failed.");
     }
     console.error("Run this manually instead:");
-    console.error(`  ${claudeAddCommand(projectPath)}`);
+    console.error(`  ${claudeAddCommand(projectPath, name)}`);
     return 1;
   }
 }
 
-function writeCodexConfig(projectPath: string, target: string | undefined): number {
+function writeCodexConfig(projectPath: string, name: string, target: string | undefined): number {
   const destination = resolve(target ?? "./sceneport.codex.json");
   try {
-    writeFileSync(destination, `${codexConfigJson(projectPath)}\n`, "utf8");
+    writeFileSync(destination, `${codexConfigJson(projectPath, name)}\n`, "utf8");
   } catch (error) {
     console.error(`Could not write Codex config to ${destination}: ${error instanceof Error ? error.message : String(error)}`);
     return 1;
   }
   console.log(`Wrote Codex MCP config to ${destination}.`);
-  console.log("Merge its `mcpServers.sceneport` entry into your Codex MCP config, or paste this TOML into ~/.codex/config.toml:");
+  console.log(`Merge its \`mcpServers.${name}\` entry into your Codex MCP config, or paste this TOML into ~/.codex/config.toml:`);
   console.log("");
-  console.log(codexConfigToml(projectPath));
+  console.log(codexConfigToml(projectPath, name));
   return 0;
 }
 
 function runConfig(host: "codex" | "claude", argv: string[]): number {
   const write = argv.includes("--write");
+  const projectPath = resolveProjectPath(process.env, process.cwd());
+  const name = resolveInstanceName(argv, projectPath);
   if (host === "claude") {
     if (!write) {
-      printHostConfig("claude");
+      printHostConfig("claude", name);
       return 0;
     }
-    return writeClaudeConfig(resolveProjectPath(process.env, process.cwd()));
+    return writeClaudeConfig(projectPath, name);
   }
 
   // codex
   if (!write) {
-    printHostConfig("codex");
+    printHostConfig("codex", name);
     return 0;
   }
   const targetFlag = argv.indexOf("--target");
   const target = targetFlag >= 0 ? argv[targetFlag + 1] : undefined;
-  return writeCodexConfig(resolveProjectPath(process.env, process.cwd()), target);
+  return writeCodexConfig(projectPath, name, target);
 }
 
 async function runInit(argv: string[]): Promise<number> {
   const write = argv.includes("--write");
   const projectPath = resolveProjectPath(process.env, process.cwd());
+  const name = resolveInstanceName(argv, projectPath);
   console.log(`ScenePort setup ${VERSION}`);
   console.log(`Unity project: ${projectPath}`);
+  console.log(`Registration name: ${name}`);
   console.log("");
   await runDoctor(process.env, process.cwd());
   console.log("");
   console.log("Recommended Claude command:");
-  console.log(`  ${claudeAddCommand(projectPath)}`);
+  console.log(`  ${claudeAddCommand(projectPath, name)}`);
   console.log("");
   console.log("Recommended Codex config (paste into your Codex MCP config):");
-  console.log(codexConfigJson(projectPath));
+  console.log(codexConfigJson(projectPath, name));
   console.log("");
 
   if (write) {
     console.log("Writing the Claude registration now...");
-    return writeClaudeConfig(projectPath);
+    return writeClaudeConfig(projectPath, name);
   }
 
   console.log("Next steps:");
   console.log("  - Run `sceneport config claude --write` to register with Claude automatically.");
   console.log("  - Run `sceneport config codex --write` to write a Codex config snippet.");
+  console.log("  - Driving several Unity projects at once? Add `--name auto` (or `--name <key>`)");
+  console.log("    and run the command once per project so each gets its own registration.");
   return 0;
 }
 
@@ -169,7 +200,7 @@ async function main() {
       process.exitCode = runConfig(host, process.argv.slice(4));
       return;
     }
-    console.error("Usage: sceneport config claude|codex [--write] [--target <path>]");
+    console.error("Usage: sceneport config claude|codex [--write] [--name <key>|auto] [--target <path>]");
     process.exitCode = 1;
     return;
   }

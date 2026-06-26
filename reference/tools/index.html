@@ -1,0 +1,2279 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="The safe MCP port into the Unity Editor for AI coding agents.">
+      
+      
+      
+        <link rel="canonical" href="https://Ludaxis.github.io/ScenePort/reference/tools/">
+      
+      
+        <link rel="prev" href="../../recipes/prepare-build/">
+      
+      
+        <link rel="next" href="../../architecture/ARCHITECTURE/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.44">
+    
+    
+      
+        <title>Tools and Resources - ScenePort</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.0253249f.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tools-resources-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="ScenePort" class="md-header__button md-logo" aria-label="ScenePort" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ScenePort
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tools and Resources
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Ludaxis/ScenePort" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Ludaxis/ScenePort
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="ScenePort" class="md-nav__button md-logo" aria-label="ScenePort" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ScenePort
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Ludaxis/ScenePort" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Ludaxis/ScenePort
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setup/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Setup
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Recipes
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Recipes
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Overview
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Perception
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            Perception
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/explain-scene/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Explain scene
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/inspect-scene/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Inspect scene
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Authoring
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            Authoring
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/create-ui-from-screenshot/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    UI from screenshot
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/create-prefab/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Create prefab
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/create-mesh/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Create a mesh
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/author-and-verify-shader/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Author and verify a shader
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/edit-hierarchy-and-prefabs/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Edit hierarchy and prefabs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/author-animation/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Author animation
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Testing and playtest
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            Testing and playtest
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/visual-regression/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Visual regression
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/write-playmode-test/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Write PlayMode test
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/playtest-pilot/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Playtest pilot
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/team-readiness-smoke/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Team readiness smoke
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Diagnostics
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            Diagnostics
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/self-heal/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Self-heal
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/fix-console-errors/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Fix console errors
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/debug-play-mode/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Debug play mode
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../recipes/prepare-build/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Prepare build
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Tools and Resources
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Tools and Resources
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tools
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#perceive-read-the-live-editor-read-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      Perceive — read the live editor (read-only)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#author-small-typed-undo-backed-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Author — small, typed, Undo-backed edits
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mesh-create-geometry-and-assign-it-capability-group-mesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      Mesh — create geometry and assign it (capability group mesh)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shadergraph-preview-author-a-shadergraph-asset-capability-group-shadergraph-preview" class="md-nav__link">
+    <span class="md-ellipsis">
+      ShaderGraph (preview) — author a .shadergraph asset (capability group shadergraph-preview)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#animation-clips-animator-controllers-and-assignment-capability-group-animation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Animation — clips, animator controllers, and assignment (capability group animation)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scene-graph-prefabs-rearrange-the-hierarchy-and-work-with-prefabs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Scene graph &amp; prefabs — rearrange the hierarchy and work with prefabs
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings-readchange-allowlisted-project-settings-capability-group-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      Settings — read/change allowlisted project settings (capability group settings)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-unity-test-runner-and-assertions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Test — Unity Test Runner and assertions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#playtest-enter-play-mode-and-interact" class="md-nav__link">
+    <span class="md-ellipsis">
+      Playtest — enter play mode and interact
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-health-audit-budgets" class="md-nav__link">
+    <span class="md-ellipsis">
+      Diagnose — health, audit, budgets
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resources
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prompts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prompts
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/ARCHITECTURE/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Security
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Security
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/SECURITY_MODEL/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Security Model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/TRUST_AND_SAFETY/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Trust and Safety
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/ROADMAP/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Roadmap
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../playbooks/TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    More docs
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            More docs
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../product/PRODUCT_BRIEF/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Product Brief
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../product/TEAM_CHARTER/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Team Charter
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../qa/QA_PLAN/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    QA Plan
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/OBSERVABILITY/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Observability
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../demo/TEAM_READINESS_DEMO/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Team Readiness Demo
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../demo/HERO_STORYBOARD/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hero Storyboard
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../playbooks/TEAM_ADOPTION/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Team Adoption
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../playbooks/SECURITY_OPERATIONS/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Security Operations
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../playbooks/CI_RELEASE/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CI and Release
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tools
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#perceive-read-the-live-editor-read-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      Perceive — read the live editor (read-only)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#author-small-typed-undo-backed-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Author — small, typed, Undo-backed edits
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mesh-create-geometry-and-assign-it-capability-group-mesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      Mesh — create geometry and assign it (capability group mesh)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shadergraph-preview-author-a-shadergraph-asset-capability-group-shadergraph-preview" class="md-nav__link">
+    <span class="md-ellipsis">
+      ShaderGraph (preview) — author a .shadergraph asset (capability group shadergraph-preview)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#animation-clips-animator-controllers-and-assignment-capability-group-animation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Animation — clips, animator controllers, and assignment (capability group animation)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scene-graph-prefabs-rearrange-the-hierarchy-and-work-with-prefabs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Scene graph &amp; prefabs — rearrange the hierarchy and work with prefabs
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings-readchange-allowlisted-project-settings-capability-group-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      Settings — read/change allowlisted project settings (capability group settings)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-unity-test-runner-and-assertions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Test — Unity Test Runner and assertions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#playtest-enter-play-mode-and-interact" class="md-nav__link">
+    <span class="md-ellipsis">
+      Playtest — enter play mode and interact
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-health-audit-budgets" class="md-nav__link">
+    <span class="md-ellipsis">
+      Diagnose — health, audit, budgets
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resources
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prompts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prompts
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="tools-resources-reference">Tools &amp; Resources Reference<a class="headerlink" href="#tools-resources-reference" title="Permanent link">&para;</a></h1>
+<p>Every ScenePort MCP tool, resource, and prompt, grouped by the task it serves. Tools marked
+<strong>(preview)</strong> report results for an agent to reason over but are not pass/fail gates in v1.0.</p>
+<h2 id="tools">Tools<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h2>
+<h3 id="perceive-read-the-live-editor-read-only">Perceive — read the live editor (read-only)<a class="headerlink" href="#perceive-read-the-live-editor-read-only" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_status</code></td>
+<td>Connected project, discovery source, token state, bridge health.</td>
+</tr>
+<tr>
+<td><code>unity_scene_hierarchy</code></td>
+<td>Active scene hierarchy tree.</td>
+</tr>
+<tr>
+<td><code>unity_selection</code></td>
+<td>Current editor selection.</td>
+</tr>
+<tr>
+<td><code>unity_console_logs</code></td>
+<td>Recent console entries (errors/warnings/logs).</td>
+</tr>
+<tr>
+<td><code>unity_console_stream</code></td>
+<td>New console entries since a cursor.</td>
+</tr>
+<tr>
+<td><code>unity_get_game_object</code></td>
+<td>A GameObject's identity and basic state.</td>
+</tr>
+<tr>
+<td><code>unity_get_components</code></td>
+<td>Components on a GameObject.</td>
+</tr>
+<tr>
+<td><code>unity_query_scene</code></td>
+<td>Structured scene queries by preset/filter.</td>
+</tr>
+<tr>
+<td><code>unity_query_components</code></td>
+<td>Query components by type across the scene.</td>
+</tr>
+<tr>
+<td><code>unity_read_serialized_properties</code></td>
+<td>Typed serialized-property reads.</td>
+</tr>
+<tr>
+<td><code>unity_scene_view_state</code></td>
+<td>Scene view camera/state.</td>
+</tr>
+<tr>
+<td><code>unity_capture_scene_view</code></td>
+<td>Capture the Scene view as an image content block.</td>
+</tr>
+<tr>
+<td><code>unity_capture_game_view</code></td>
+<td>Capture the Game view as an image content block.</td>
+</tr>
+<tr>
+<td><code>unity_runtime_status</code></td>
+<td>Play-mode runtime status.</td>
+</tr>
+<tr>
+<td><code>unity_query_runtime</code></td>
+<td>Query runtime objects in play mode.</td>
+</tr>
+<tr>
+<td><code>unity_get_runtime_object</code></td>
+<td>Read a runtime object.</td>
+</tr>
+<tr>
+<td><code>unity_asset_search</code></td>
+<td>Search the AssetDatabase.</td>
+</tr>
+<tr>
+<td><code>unity_asset_graph</code></td>
+<td>Asset dependency graph for a GUID.</td>
+</tr>
+<tr>
+<td><code>unity_get_compilation_status</code></td>
+<td>Whether scripts currently compile.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="author-small-typed-undo-backed-edits">Author — small, typed, Undo-backed edits<a class="headerlink" href="#author-small-typed-undo-backed-edits" title="Permanent link">&para;</a></h3>
+<p>Today: uGUI Canvas authoring plus core scene/asset authoring. Dedicated UI-authoring tools
+land in v1.1.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_create_game_object</code></td>
+<td>Create a GameObject (Undo-backed).</td>
+</tr>
+<tr>
+<td><code>unity_set_transform</code></td>
+<td>Set transform values (idempotent).</td>
+</tr>
+<tr>
+<td><code>unity_add_component</code></td>
+<td>Add a component (Undo-backed).</td>
+</tr>
+<tr>
+<td><code>unity_set_serialized_property</code></td>
+<td>Set a serialized property (idempotent, guarded).</td>
+</tr>
+<tr>
+<td><code>unity_validate_authoring_write</code></td>
+<td>Dry-run validate an authoring write.</td>
+</tr>
+<tr>
+<td><code>unity_authoring_batch</code></td>
+<td>Transactional batch; rolls back created assets on failure.</td>
+</tr>
+<tr>
+<td><code>unity_create_script</code></td>
+<td>Create a C# script under <code>Assets/</code>.</td>
+</tr>
+<tr>
+<td><code>unity_create_material</code></td>
+<td>Create a material asset.</td>
+</tr>
+<tr>
+<td><code>unity_create_prefab</code></td>
+<td>Create a prefab asset.</td>
+</tr>
+<tr>
+<td><code>unity_create_folder</code></td>
+<td>Create a folder (recursively) under <code>Assets/</code>.</td>
+</tr>
+<tr>
+<td><code>unity_create_text_asset</code></td>
+<td>Create an inert text/config/source asset (extension-allowlisted).</td>
+</tr>
+<tr>
+<td><code>unity_create_shader</code></td>
+<td>Create a <code>.shader</code> (ShaderLab) asset, verbatim or from a template.</td>
+</tr>
+<tr>
+<td><code>unity_menu_item_allowlist</code></td>
+<td>List menu items allowed for execution.</td>
+</tr>
+<tr>
+<td><code>unity_execute_menu_item</code></td>
+<td>Execute an exact-match allowlisted menu item.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="mesh-create-geometry-and-assign-it-capability-group-mesh">Mesh — create geometry and assign it (capability group <code>mesh</code>)<a class="headerlink" href="#mesh-create-geometry-and-assign-it-capability-group-mesh" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_create_primitive_mesh</code></td>
+<td>Create a Mesh <code>.asset</code> from a built-in primitive (box/sphere/cylinder/capsule/plane/quad), optionally scaled.</td>
+</tr>
+<tr>
+<td><code>unity_create_procedural_mesh</code></td>
+<td>Create a Mesh <code>.asset</code> from explicit, range-validated vertices/triangles (+ optional normals/UVs).</td>
+</tr>
+<tr>
+<td><code>unity_assign_mesh</code></td>
+<td>Assign a Mesh asset to a GameObject's MeshFilter (adds MeshFilter/MeshRenderer if missing), optional material. Undo-backed.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="shadergraph-preview-author-a-shadergraph-asset-capability-group-shadergraph-preview">ShaderGraph (preview) — author a <code>.shadergraph</code> asset (capability group <code>shadergraph-preview</code>)<a class="headerlink" href="#shadergraph-preview-author-a-shadergraph-asset-capability-group-shadergraph-preview" title="Permanent link">&para;</a></h3>
+<p><strong>Preview / scaffold.</strong> Off by default; allowed <strong>only</strong> under the <code>full-safe-local</code> policy profile (every other profile, including <code>read-only</code>, <code>team-safe</code>, and <code>playtest</code>, denies it). ScenePort has no <code>com.unity.shadergraph</code> compile dependency — the asset is written as JSON text and round-trip validated after import. If Unity cannot load the asset back (package missing or content/version unsupported) the write is rolled back and a <code>capability.unsupported</code> error is returned. <code>dryRun</code> defaults to <code>true</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_sg_create_graph</code></td>
+<td>(preview) Create a <code>.shadergraph</code> asset under <code>Assets/</code> from verbatim JSON <code>content</code>, or from a minimal Unlit template when omitted. Round-trip validated; rolls back on import failure.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="animation-clips-animator-controllers-and-assignment-capability-group-animation">Animation — clips, animator controllers, and assignment (capability group <code>animation</code>)<a class="headerlink" href="#animation-clips-animator-controllers-and-assignment-capability-group-animation" title="Permanent link">&para;</a></h3>
+<p>Denied by the <code>team-safe</code>, <code>playtest</code>, and <code>read-only</code> profiles (mutating, like <code>mesh</code> and <code>authoring</code>). Asset creation is rollback-tracked; <code>unity_assign_animator</code> is Undo-backed and scene-mutating. All are dry-run aware (<code>dryRun</code> defaults to <code>true</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_create_animation_clip</code></td>
+<td>Create an AnimationClip <code>.asset</code>, optionally baking float curves from time/value keyframes (per child path + component type + property).</td>
+</tr>
+<tr>
+<td><code>unity_create_animator_controller</code></td>
+<td>Create an AnimatorController <code>.asset</code>, optionally adding typed parameters (<code>float</code>/<code>int</code>/<code>bool</code>/<code>trigger</code>).</td>
+</tr>
+<tr>
+<td><code>unity_add_animator_state</code></td>
+<td>Add a state to the controller's first layer, optionally assigning a motion clip and marking it the default state.</td>
+</tr>
+<tr>
+<td><code>unity_add_animator_transition</code></td>
+<td>Add a transition between two named states on the first layer, with optional parameter conditions.</td>
+</tr>
+<tr>
+<td><code>unity_assign_animator</code></td>
+<td>Assign a RuntimeAnimatorController to a scene GameObject's Animator (adds the Animator if missing). Undo-backed.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scene-graph-prefabs-rearrange-the-hierarchy-and-work-with-prefabs">Scene graph &amp; prefabs — rearrange the hierarchy and work with prefabs<a class="headerlink" href="#scene-graph-prefabs-rearrange-the-hierarchy-and-work-with-prefabs" title="Permanent link">&para;</a></h3>
+<p>Scene-graph reordering lives in the <code>safe-write</code> group; prefab instantiation and override apply/revert live in the <code>authoring</code> group. All are Undo-backed and dry-run aware (<code>dryRun</code> defaults to <code>true</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_reparent_game_object</code></td>
+<td>Move a GameObject under a new parent (or to the scene root when no parent is given); keeps world position by default.</td>
+</tr>
+<tr>
+<td><code>unity_rename_game_object</code></td>
+<td>Rename a scene GameObject (idempotent).</td>
+</tr>
+<tr>
+<td><code>unity_delete_game_object</code></td>
+<td>Destroy a scene GameObject and its children (destructive, Undo-backed).</td>
+</tr>
+<tr>
+<td><code>unity_duplicate_game_object</code></td>
+<td>Clone a GameObject under the same parent, keeping the source name.</td>
+</tr>
+<tr>
+<td><code>unity_reorder_sibling</code></td>
+<td>Set a GameObject's sibling index among its parent's children (idempotent).</td>
+</tr>
+<tr>
+<td><code>unity_instantiate_prefab</code></td>
+<td>Instantiate a prefab asset into the active scene, optionally under a parent and at a local position.</td>
+</tr>
+<tr>
+<td><code>unity_apply_prefab_overrides</code></td>
+<td>Apply a prefab instance's overrides back to the source prefab asset.</td>
+</tr>
+<tr>
+<td><code>unity_revert_prefab_overrides</code></td>
+<td>Revert a prefab instance's overrides to the source prefab asset's values.</td>
+</tr>
+</tbody>
+</table>
+<p><code>unity_set_serialized_property</code> also accepts <code>objectReferenceInstanceId</code> to wire a live scene object/component into an ObjectReference field (a non-zero id sets it, <code>0</code> clears it) when no <code>objectReferenceAssetPath</code> is given.</p>
+<h3 id="settings-readchange-allowlisted-project-settings-capability-group-settings">Settings — read/change allowlisted project settings (capability group <code>settings</code>)<a class="headerlink" href="#settings-readchange-allowlisted-project-settings-capability-group-settings" title="Permanent link">&para;</a></h3>
+<p>Denied by the <code>team-safe</code>, <code>playtest</code>, and <code>read-only</code> profiles. Writes are <strong>allowlist-only</strong>;
+unknown keys (including destructive ones like bundle id / scripting backend) are rejected. Settings
+are <strong>not</strong> Unity-Undo reversible — <code>unity_set_setting</code> echoes the previous value for manual revert.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_get_settings</code></td>
+<td>Read the allowlisted player/quality/time/physics settings and current values.</td>
+</tr>
+<tr>
+<td><code>unity_set_setting</code></td>
+<td>Set one allowlisted setting by key (e.g. <code>quality.level</code>, <code>time.fixedDeltaTime</code>, <code>physics.gravity</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="test-unity-test-runner-and-assertions">Test — Unity Test Runner and assertions<a class="headerlink" href="#test-unity-test-runner-and-assertions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_tests_run</code></td>
+<td>Run EditMode/PlayMode tests. <strong>Supersedes</strong> <code>unity_run_editmode_tests</code> / <code>unity_run_playmode_tests</code>.</td>
+</tr>
+<tr>
+<td><code>unity_tests_wait</code></td>
+<td>Wait for a test run to finish without blocking the editor.</td>
+</tr>
+<tr>
+<td><code>unity_tests_artifacts</code></td>
+<td>Fetch test result artifacts.</td>
+</tr>
+<tr>
+<td><code>unity_assert_state</code></td>
+<td>Assert editor/scene state.</td>
+</tr>
+<tr>
+<td><code>unity_capture_golden_frame</code></td>
+<td>Capture a golden reference frame.</td>
+</tr>
+<tr>
+<td><code>unity_compare_golden_frame</code></td>
+<td>Diff against a golden frame; returns a diff image + <code>pixelDiffPercent</code>.</td>
+</tr>
+<tr>
+<td><code>unity_run_editmode_tests</code></td>
+<td>Legacy EditMode test run (kept for compatibility; prefer <code>unity_tests_run</code>).</td>
+</tr>
+<tr>
+<td><code>unity_run_playmode_tests</code></td>
+<td>Legacy PlayMode test run (kept for compatibility; prefer <code>unity_tests_run</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="playtest-enter-play-mode-and-interact">Playtest — enter play mode and interact<a class="headerlink" href="#playtest-enter-play-mode-and-interact" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_enter_play_mode</code></td>
+<td>Enter play mode.</td>
+</tr>
+<tr>
+<td><code>unity_exit_play_mode</code></td>
+<td>Exit play mode.</td>
+</tr>
+<tr>
+<td><code>unity_wait</code></td>
+<td>MCP-side wait that does not block the editor main thread.</td>
+</tr>
+<tr>
+<td><code>unity_start_playtest</code></td>
+<td>Start a playtest session.</td>
+</tr>
+<tr>
+<td><code>unity_stop_playtest</code></td>
+<td>Stop a playtest session.</td>
+</tr>
+<tr>
+<td><code>unity_playtest_status</code></td>
+<td>Playtest session status.</td>
+</tr>
+<tr>
+<td><code>unity_send_key</code></td>
+<td>Send a key to the Game view.</td>
+</tr>
+<tr>
+<td><code>unity_send_click</code></td>
+<td>Send a click to the Game view.</td>
+</tr>
+<tr>
+<td><code>unity_capture_playtest_frame</code></td>
+<td>Capture a Game view frame during a playtest.</td>
+</tr>
+<tr>
+<td><code>unity_get_playtest_report</code></td>
+<td>Agent-readable playtest report.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="diagnose-health-audit-budgets">Diagnose — health, audit, budgets<a class="headerlink" href="#diagnose-health-audit-budgets" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unity_diagnostics</code></td>
+<td>Redacted diagnostics bundle.</td>
+</tr>
+<tr>
+<td><code>unity_audit_log</code></td>
+<td>Read the bounded local audit log of mutating requests.</td>
+</tr>
+<tr>
+<td><code>unity_run_scenario</code></td>
+<td><strong>(preview)</strong> Run a scenario.</td>
+</tr>
+<tr>
+<td><code>unity_wait_for_scenario</code></td>
+<td><strong>(preview)</strong> Wait for a scenario to finish.</td>
+</tr>
+<tr>
+<td><code>unity_get_scenario_report</code></td>
+<td><strong>(preview)</strong> Read a scenario report.</td>
+</tr>
+<tr>
+<td><code>unity_perf_probe</code></td>
+<td><strong>(preview)</strong> Sample performance metrics.</td>
+</tr>
+<tr>
+<td><code>unity_check_perf_budgets</code></td>
+<td><strong>(preview)</strong> Compare metrics against perf budgets.</td>
+</tr>
+</tbody>
+</table>
+<p>The capture tools (<code>unity_capture_game_view</code>, <code>unity_capture_scene_view</code>,
+<code>unity_capture_playtest_frame</code>, <code>unity_capture_golden_frame</code>) return real MCP <strong>image content
+blocks</strong> the model can see (<code>inline</code> defaults to true, <code>maxEdge</code> defaults to 1024).</p>
+<h2 id="resources">Resources<a class="headerlink" href="#resources" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>Reads</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sceneport://project/status</code></td>
+<td>Project + bridge status.</td>
+</tr>
+<tr>
+<td><code>sceneport://bridge/capabilities</code></td>
+<td>Live bridge capability contract.</td>
+</tr>
+<tr>
+<td><code>sceneport://scene/active</code></td>
+<td>Active scene summary.</td>
+</tr>
+<tr>
+<td><code>sceneport://scene/hierarchy</code></td>
+<td>Scene hierarchy.</td>
+</tr>
+<tr>
+<td><code>sceneport://object/{instanceId}</code></td>
+<td>A specific object.</td>
+</tr>
+<tr>
+<td><code>sceneport://console/errors</code></td>
+<td>Console errors.</td>
+</tr>
+<tr>
+<td><code>sceneport://assets/search/{query}</code></td>
+<td>Asset search results.</td>
+</tr>
+<tr>
+<td><code>sceneport://tests/editmode</code></td>
+<td>EditMode test results.</td>
+</tr>
+<tr>
+<td><code>sceneport://tests/playmode</code></td>
+<td>PlayMode test results.</td>
+</tr>
+<tr>
+<td><code>sceneport://packages</code></td>
+<td>Installed packages.</td>
+</tr>
+<tr>
+<td><code>sceneport://playtest/status</code></td>
+<td>Playtest status.</td>
+</tr>
+<tr>
+<td><code>sceneport://playtest/report</code></td>
+<td>Playtest report.</td>
+</tr>
+<tr>
+<td><code>sceneport://audit/log</code></td>
+<td>Audit log.</td>
+</tr>
+<tr>
+<td><code>sceneport://diagnostics</code></td>
+<td>Redacted diagnostics.</td>
+</tr>
+<tr>
+<td><code>sceneport://scene/query/{preset}</code></td>
+<td>Preset scene query.</td>
+</tr>
+<tr>
+<td><code>sceneport://components/type/{typeName}</code></td>
+<td>Components by type.</td>
+</tr>
+<tr>
+<td><code>sceneport://serialized/object/{instanceId}</code></td>
+<td>Serialized object reads.</td>
+</tr>
+<tr>
+<td><code>sceneport://console/events/{cursor}</code></td>
+<td>Console events since a cursor.</td>
+</tr>
+<tr>
+<td><code>sceneport://assets/graph/{guid}</code></td>
+<td>Asset dependency graph.</td>
+</tr>
+<tr>
+<td><code>sceneport://scene-view/state</code></td>
+<td>Scene view state.</td>
+</tr>
+<tr>
+<td><code>sceneport://runtime/status</code></td>
+<td>Runtime status.</td>
+</tr>
+<tr>
+<td><code>sceneport://runtime/object/{instanceId}</code></td>
+<td>Runtime object.</td>
+</tr>
+<tr>
+<td><code>sceneport://profiler/snapshot</code></td>
+<td>Profiler snapshot.</td>
+</tr>
+<tr>
+<td><code>sceneport://authoring/menu-items</code></td>
+<td>Allowlisted menu items.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="prompts">Prompts<a class="headerlink" href="#prompts" title="Permanent link">&para;</a></h2>
+<p>Workflow recipes you can invoke by name. See the
+<a href="../../recipes/">Recipe Gallery</a> for transcripts and tips.</p>
+<ul>
+<li><code>sceneport:self-heal</code></li>
+<li><code>sceneport:visual-regression</code></li>
+<li><code>sceneport:explain-scene</code></li>
+<li><code>sceneport:fix-console-errors</code></li>
+<li><code>sceneport:inspect-scene</code></li>
+<li><code>sceneport:create-prefab</code></li>
+<li><code>sceneport:create-ui-from-screenshot</code></li>
+<li><code>sceneport:write-playmode-test</code></li>
+<li><code>sceneport:debug-play-mode</code></li>
+<li><code>sceneport:playtest-pilot</code></li>
+<li><code>sceneport:prepare-build</code></li>
+<li><code>sceneport:team-readiness-smoke</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.suggest"], "search": "../../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.83f73b43.min.js"></script>
+      
+    
+  </body>
+</html>
